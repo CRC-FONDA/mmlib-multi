@@ -571,6 +571,10 @@ class ProvenanceSaveService(BaselineSaveService):
             raise NotImplementedError
 
 
+class ModelListSaveService(BaselineSaveService):
+    pass
+
+
 def _get_weights_hash_info(add_weights_hash_info, model_save_info):
     weights_hash_info = None
     if add_weights_hash_info:
