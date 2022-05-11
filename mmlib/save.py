@@ -7,13 +7,15 @@ import torch
 
 from mmlib.equal import tensor_equal
 from mmlib.persistence import FilePersistenceService, DictPersistenceService
-from mmlib.save_info import SingleModelSaveInfo, ProvSingleModelSaveInfo
+from mmlib.save_info import SingleModelSaveInfo, ProvSingleModelSaveInfo, ModelListSaveInfo
 from mmlib.schema.dataset import Dataset
 from mmlib.schema.file_reference import FileReference
 from mmlib.schema.model_info import ModelInfo, MODEL_INFO
-from mmlib.schema.recover_info import FullModelRecoverInfo, WeightsUpdateRecoverInfo, ProvenanceRecoverInfo
-from mmlib.schema.restorable_object import RestoredModelInfo
-from mmlib.schema.store_type import ModelStoreType
+from mmlib.schema.model_list_info import ModelListInfo
+from mmlib.schema.recover_info import FullModelRecoverInfo, WeightsUpdateRecoverInfo, ProvenanceRecoverInfo, \
+    FullModelListRecoverInfo
+from mmlib.schema.restorable_object import RestoredModelInfo, RestoredModelListInfo
+from mmlib.schema.store_type import ModelStoreType, ModelListStoreType
 from mmlib.schema.train_info import TrainInfo
 from mmlib.track_env import compare_env_to_current
 from mmlib.util.helper import log_start, log_stop
@@ -235,15 +237,18 @@ class BaselineSaveService(AbstractSaveService):
 
         return code, class_name
 
-    def _pickle_weights(self, model, save_path):
+    def _pickle_weights(self, model, save_path, model_name=None):
         # store pickle dump of model weights
         state_dict = model.state_dict()
-        weight_path = self._pickle_state_dict(state_dict, save_path)
+        weight_path = self._pickle_state_dict(state_dict, save_path, model_name)
 
         return weight_path
 
-    def _pickle_state_dict(self, state_dict, save_path):
-        weight_path = os.path.join(save_path, MODEL_WEIGHTS)
+    def _pickle_state_dict(self, state_dict, save_path, model_name=None):
+        if model_name:
+            weight_path = os.path.join(save_path, model_name)
+        else:
+            weight_path = os.path.join(save_path, MODEL_WEIGHTS)
         torch.save(state_dict, weight_path)
         return weight_path
 
@@ -572,7 +577,47 @@ class ProvenanceSaveService(BaselineSaveService):
 
 
 class ModelListSaveService(BaselineSaveService):
-    pass
+    def save_models(self, save_info: ModelListSaveInfo):
+        model_ids = self._save_full_models(save_info)
+
+        return model_ids
+
+    def _save_full_models(self, save_info: ModelListSaveInfo):
+        model_list = save_info.models
+
+        with tempfile.TemporaryDirectory() as tmp_path:
+            saved_parameter_paths = []
+            for i, model in enumerate(model_list):
+                model_name = f'model-{i}.pt'
+                param_path = self._pickle_weights(model, tmp_path, model_name)
+                saved_parameter_paths.append(FileReference(path=param_path))
+
+            recover_info = FullModelListRecoverInfo(model_code=FileReference(path=save_info.model_code),
+                                                    model_class_name=save_info.model_class_name,
+                                                    environment=save_info.environment,
+                                                    parameter_files=saved_parameter_paths)
+
+            model_list_info = ModelListInfo(store_type=ModelListStoreType.FULL_MODEL, recover_info=recover_info)
+
+            model_info_id = model_list_info.persist(self._file_pers_service, self._dict_pers_service)
+
+            return model_info_id
+
+    def recover_models(self, model_list_id: str, execute_checks: bool = True) -> RestoredModelListInfo:
+        with tempfile.TemporaryDirectory() as tmp_path:
+            model_info = ModelListInfo.load(model_list_id, self._file_pers_service, self._dict_pers_service, tmp_path,
+                                            load_recursive=True, load_files=True)
+
+            recover_info: FullModelListRecoverInfo = model_info.recover_info
+
+            recovered_models = []
+            for param_file in recover_info.parameter_files:
+                model = create_object(recover_info.model_code.path, recover_info.model_class_name)
+                s_dict = self._recover_pickled_weights(param_file.path)
+                model.load_state_dict(s_dict)
+                recovered_models.append(model)
+
+            return RestoredModelListInfo(models=recovered_models)
 
 
 def _get_weights_hash_info(add_weights_hash_info, model_save_info):

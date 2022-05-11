@@ -7,6 +7,7 @@ import torch
 from mmlib.equal import model_equal
 from mmlib.persistence import FileSystemPersistenceService, MongoDictPersistenceService
 from mmlib.save import ModelListSaveService
+from mmlib.save_info import ModelListSaveInfo
 from mmlib.schema.save_info_builder import ModelSaveInfoBuilder
 from mmlib.track_env import track_current_environment
 from mmlib.util.dummy_data import imagenet_input
@@ -65,9 +66,10 @@ class TestModelListSaveService(unittest.TestCase):
         save_info_builder = ModelSaveInfoBuilder()
         env = track_current_environment()
         save_info_builder.add_model_info(model_list=model_list, env=env)
-        save_info = save_info_builder.build()
+        save_info: ModelListSaveInfo = save_info_builder.build()
 
-        model_ids = self.save_service.save_models(save_info)
-        for model_id, model in zip(model_ids, model_list):
-            restored_model_info = self.save_service.recover_model(model_id)
-            self.assertTrue(model_equal(model, restored_model_info.model, imagenet_input))
+        model_list_id = self.save_service.save_models(save_info)
+        restored_model_list_info = self.save_service.recover_models(model_list_id)
+
+        for recovered_model, model in zip(restored_model_list_info.models, model_list):
+            self.assertTrue(model_equal(model, recovered_model, imagenet_input))

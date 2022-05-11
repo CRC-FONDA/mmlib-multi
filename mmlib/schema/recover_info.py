@@ -12,6 +12,7 @@ from mmlib.schema.train_info import TrainInfo
 from mmlib.util.helper import copy_all_data, clean
 
 RECOVER_INFO = 'recover_info'
+LIST_RECOVER_INFO = 'list_recover_info'
 
 
 class AbstractRecoverInfo(SchemaObj, metaclass=abc.ABCMeta):
@@ -19,6 +20,13 @@ class AbstractRecoverInfo(SchemaObj, metaclass=abc.ABCMeta):
     @property
     def _representation_type(self) -> str:
         return RECOVER_INFO
+
+
+class AbstractListRecoverInfo(SchemaObj, metaclass=abc.ABCMeta):
+
+    @property
+    def _representation_type(self) -> str:
+        return LIST_RECOVER_INFO
 
 
 MODEL_CODE = 'model_code'
@@ -69,9 +77,69 @@ class FullModelRecoverInfo(AbstractRecoverInfo):
         size_dict[PARAMETERS] = self.parameters_file.size
 
 
+class FullModelListRecoverInfo(AbstractListRecoverInfo):
+
+    def __init__(self, parameter_files: [FileReference] = None, model_code: FileReference = None,
+                 model_class_name: str = None, environment: Environment = None, store_id: str = None):
+        super().__init__(store_id)
+        self.model_code = model_code
+        self.model_class_name = model_class_name
+        self.parameter_files = parameter_files
+        self.environment = environment
+
+    def load_all_fields(self, file_pers_service: FilePersistenceService, dict_pers_service: DictPersistenceService,
+                        restore_root: str, load_recursive: bool = True, load_files: bool = True):
+        restored_dict = dict_pers_service.recover_dict(self.store_id, LIST_RECOVER_INFO)
+
+        self.model_class_name = restored_dict[MODEL_CLASS_NAME]
+
+        self.model_code = _recover_model_code(file_pers_service, load_files, restore_root, restored_dict)
+        self.parameter_files = _recover_parameter_list(file_pers_service, load_files, restore_root, restored_dict)
+        self.environment = _recover_environment(dict_pers_service, file_pers_service, load_recursive, restore_root,
+                                                restored_dict)
+
+    def _persist_class_specific_fields(self, dict_representation, file_pers_service, dict_pers_service):
+        file_pers_service.save_file(self.model_code)
+
+        for parameter_file in self.parameter_files:
+            file_pers_service.save_file(parameter_file)
+
+        env_id = self.environment.persist(file_pers_service, dict_pers_service)
+
+        dict_representation[MODEL_CODE] = self.model_code.reference_id
+        dict_representation[MODEL_CLASS_NAME] = self.model_class_name
+        dict_representation[ENVIRONMENT] = env_id
+        dict_representation[PARAMETERS] = [pf.reference_id for pf in self.parameter_files]
+
+    def _add_reference_sizes(self, size_dict, file_pers_service, dict_pers_service):
+        size_dict[ENVIRONMENT] = self.environment.size_info(file_pers_service, dict_pers_service)
+
+        file_pers_service.file_size(self.model_code)
+        size_dict[MODEL_CODE] = self.model_code.size
+
+        param_sizes = []
+        for parameter_file in self.parameter_files:
+            param_sizes.append(file_pers_service.file_size(parameter_file))
+
+        size_dict[PARAMETERS] = sum(param_sizes)
+
+
+def _recover_parameter_list(file_pers_service, load_files, restore_root, restored_dict):
+    parameter_files = []
+    for parameters_file_id in restored_dict[PARAMETERS]:
+        parameters_file = FileReference(reference_id=parameters_file_id)
+
+        if load_files:
+            file_pers_service.recover_file(parameters_file, restore_root)
+
+        parameter_files.append(parameters_file)
+
+    return parameter_files
+
+
 def _recover_parameters(file_pers_service, load_files, restore_root, restored_dict):
-    parameterss_file_id = restored_dict[PARAMETERS]
-    parameters_file = FileReference(reference_id=parameterss_file_id)
+    parameters_file_id = restored_dict[PARAMETERS]
+    parameters_file = FileReference(reference_id=parameters_file_id)
 
     if load_files:
         file_pers_service.recover_file(parameters_file, restore_root)
