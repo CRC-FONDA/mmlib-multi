@@ -103,7 +103,7 @@ class ModelSaveInfoBuilder:
         return save_info
 
     def _valid_baseline_save_model_info(self):
-        return self._model or self._base_model
+        return self._model or self._base_model or self._model_list
 
     def _valid_prov_save_model_info(self):
         return self._valid_baseline_save_model_info() and self._base_model \
