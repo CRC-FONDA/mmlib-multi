@@ -14,16 +14,36 @@ class TrainSaveInfo:
 
 
 class ModelSaveInfo:
+    def __init__(self, environment: Environment):
+        self.environment = environment
+
+
+class SingleModelSaveInfo(ModelSaveInfo):
     def __init__(self, model: torch.nn.Module, base_model: str, environment: Environment, model_code: str = None):
+        super().__init__(environment)
         self.model = model
         self.base_model = base_model
-        self.environment = environment
         if model:
             self.model_class_name = class_name(model)
             self.model_code = model_code if model_code else source_file(model)
 
 
-class ProvModelSaveInfo(ModelSaveInfo):
+class ModelListSaveInfo(ModelSaveInfo):
+    def __init__(self, models: [torch.nn.Module], environment: Environment, model_code: str = None):
+        super().__init__(environment)
+        self.models = models
+        if models[0]:
+            self.model_class_name = class_name(models[0])
+            self.model_code = self._get_model_code(model_code, models[0])
+            if len(models) > 1:
+                assert self.model_class_name == class_name(models[1])
+                assert self.model_code == self._get_model_code(model_code, models[1])
+
+    def _get_model_code(self, model_code, model):
+        return model_code if model_code else source_file(model)
+
+
+class ProvSingleModelSaveInfo(SingleModelSaveInfo):
     def __init__(self, model: torch.nn.Module, base_model: str, model_code: str, raw_dataset: str,
                  train_info: TrainSaveInfo, environment: Environment):
         super().__init__(model, base_model, environment, model_code)

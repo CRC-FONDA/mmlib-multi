@@ -1,6 +1,7 @@
 import torch
 
-from mmlib.save_info import ModelSaveInfo, TrainSaveInfo, ProvModelSaveInfo
+from mmlib.save_info import SingleModelSaveInfo, TrainSaveInfo, ProvSingleModelSaveInfo, ModelListSaveInfo, \
+    ModelSaveInfo
 from mmlib.schema.environment import Environment
 from mmlib.schema.restorable_object import StateDictRestorableObjectWrapper
 
@@ -11,6 +12,7 @@ class ModelSaveInfoBuilder:
         super().__init__()
         self._model = None
         self._base_model = None
+        self._model_list = None
         self._code = None
         self._prov_raw_data = None
         self._env = None
@@ -21,7 +23,7 @@ class ModelSaveInfoBuilder:
         self.prov_model_info_added = False
 
     def add_model_info(self, env: Environment, model: torch.nn.Module = None, code: str = None,
-                       base_model_id: str = None):
+                       base_model_id: str = None, model_list: [torch.nn.Module] = None):
         """
         Adds the general model information
         :param env: The environment the training was/will be performed in.
@@ -30,11 +32,13 @@ class ModelSaveInfoBuilder:
          code of the model .
         constructor (is needed for recover process).
         :param base_model_id: The id of the base model.
+        :param model_list: List of models to be saved
         """
         self._env = env
         self._model = model
         self._base_model = base_model_id
         self._code = code
+        self._model_list = model_list
         self.general_model_info_added = True
 
     def add_prov_data(self, raw_data_path: str, train_kwargs: dict,
@@ -58,15 +62,27 @@ class ModelSaveInfoBuilder:
             if self.prov_model_info_added:
                 assert self._valid_prov_save_model_info(), 'info not sufficient'
                 return self._build_prov_save_info()
+            elif self._model_list:
+                return self._build_baseline_save_model_list_info()
             else:
                 return self._build_baseline_save_info()
 
     def _build_baseline_save_info(self):
-        save_info = ModelSaveInfo(
+        save_info = SingleModelSaveInfo(
             model=self._model,
             base_model=self._base_model,
             model_code=self._code,
-            environment=self._env)
+            environment=self._env
+        )
+
+        return save_info
+
+    def _build_baseline_save_model_list_info(self):
+        save_info = ModelListSaveInfo(
+            models=self._model_list,
+            model_code=self._code,
+            environment=self._env
+        )
 
         return save_info
 
@@ -75,7 +91,7 @@ class ModelSaveInfoBuilder:
             train_service_wrapper=self._prov_train_service_wrapper,
             train_kwargs=self._prov_train_kwargs)
 
-        save_info = ProvModelSaveInfo(
+        save_info = ProvSingleModelSaveInfo(
 
             model=self._model,
             base_model=self._base_model,

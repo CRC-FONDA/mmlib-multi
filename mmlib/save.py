@@ -7,7 +7,7 @@ import torch
 
 from mmlib.equal import tensor_equal
 from mmlib.persistence import FilePersistenceService, DictPersistenceService
-from mmlib.save_info import ModelSaveInfo, ProvModelSaveInfo
+from mmlib.save_info import SingleModelSaveInfo, ProvSingleModelSaveInfo
 from mmlib.schema.dataset import Dataset
 from mmlib.schema.file_reference import FileReference
 from mmlib.schema.model_info import ModelInfo, MODEL_INFO
@@ -48,7 +48,7 @@ class AbstractSaveService(metaclass=abc.ABCMeta):
         self.logging = logging
 
     @abc.abstractmethod
-    def save_model(self, model_save_info: ModelSaveInfo) -> str:
+    def save_model(self, model_save_info: SingleModelSaveInfo) -> str:
         """
         Saves a model together with the given metadata.
         :param model_save_info: An instance of ModelSaveInfo providing all the info needed to save the model.
@@ -102,7 +102,7 @@ class BaselineSaveService(AbstractSaveService):
         self._file_pers_service.logging = logging
         self._dict_pers_service.logging = logging
 
-    def save_model(self, model_save_info: ModelSaveInfo) -> str:
+    def save_model(self, model_save_info: SingleModelSaveInfo) -> str:
         log_all = log_start(self.logging, BASELINE, 'call_save_full_model', 'all')
 
         self._check_consistency(model_save_info)
@@ -160,7 +160,7 @@ class BaselineSaveService(AbstractSaveService):
         # the class name of the model
         assert model_save_info.model_class_name, 'model class name is not set'
 
-    def _save_full_model(self, model_save_info: ModelSaveInfo, add_weights_hash_info=True) -> str:
+    def _save_full_model(self, model_save_info: SingleModelSaveInfo, add_weights_hash_info=True) -> str:
         log_all = log_start(self.logging, BASELINE, '_save_full_model', 'all')
 
         with tempfile.TemporaryDirectory() as tmp_path:
@@ -296,7 +296,7 @@ class WeightUpdateSaveService(BaselineSaveService):
         super().__init__(file_pers_service, dict_pers_service, logging)
         self.improved_version = improved_version
 
-    def save_model(self, model_save_info: ModelSaveInfo) -> str:
+    def save_model(self, model_save_info: SingleModelSaveInfo) -> str:
 
         # as a first step we have to find out if we have to store a full model first or if we can store only the update
         # if there is no base model given, we can not compute any updates -> we have to sore the full model
@@ -461,9 +461,9 @@ class ProvenanceSaveService(BaselineSaveService):
         """
         super().__init__(file_pers_service, dict_pers_service, logging)
 
-    def save_model(self, model_save_info: ModelSaveInfo) -> str:
+    def save_model(self, model_save_info: SingleModelSaveInfo) -> str:
         log_all = log_start(self.logging, PROVENANCE, '_save_model', 'all')
-        if model_save_info.base_model is None or not isinstance(model_save_info, ProvModelSaveInfo):
+        if model_save_info.base_model is None or not isinstance(model_save_info, ProvSingleModelSaveInfo):
             # if the base model is none or model save info does not provide provenance save info we have to store the
             # model as a full model
             model_id = super().save_model(model_save_info)
