@@ -18,7 +18,7 @@ FILE_PATH = os.path.dirname(os.path.realpath(__file__))
 
 class TestModelInfoSize(TestSize):
 
-    def test_environment_size(self):
+    def test_model_info_size(self):
         with tempfile.TemporaryDirectory() as tmp_path:
             model = resnet18(pretrained=True)
             param_path = os.path.join(tmp_path, 'params')
