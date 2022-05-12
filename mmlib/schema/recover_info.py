@@ -212,24 +212,37 @@ def _restore_train_info(dict_pers_service, file_pers_service, restore_root, rest
 
 class AbstractListRecoverInfo(SchemaObj, metaclass=abc.ABCMeta):
 
-    @property
-    def _representation_type(self) -> str:
-        return LIST_RECOVER_INFO
+    def __init__(self, model_code: FileReference = None, model_class_name: str = None, environment: Environment = None,
+                 store_id: str = None):
+        super().__init__(store_id)
+        self.model_code = model_code
+        self.model_class_name = model_class_name
+        self.environment = environment
+
+    def _persist_class_specific_fields(self, dict_representation, file_pers_service, dict_pers_service):
+        file_pers_service.save_file(self.model_code)
+
+        env_id = self.environment.persist(file_pers_service, dict_pers_service)
+
+        dict_representation[MODEL_CODE] = self.model_code.reference_id
+        dict_representation[MODEL_CLASS_NAME] = self.model_class_name
+        dict_representation[ENVIRONMENT] = env_id
 
 
 class FullModelListRecoverInfo(AbstractListRecoverInfo):
 
+    @property
+    def _representation_type(self) -> str:
+        return LIST_RECOVER_INFO
+
     def __init__(self, parameter_files: [FileReference] = None, model_code: FileReference = None,
                  model_class_name: str = None, environment: Environment = None, store_id: str = None):
-        super().__init__(store_id)
-        self.model_code = model_code
-        self.model_class_name = model_class_name
+        super().__init__(model_code, model_class_name, environment, store_id)
         self.parameter_files = parameter_files
-        self.environment = environment
 
     def load_all_fields(self, file_pers_service: FilePersistenceService, dict_pers_service: DictPersistenceService,
                         restore_root: str, load_recursive: bool = True, load_files: bool = True):
-        restored_dict = dict_pers_service.recover_dict(self.store_id, LIST_RECOVER_INFO)
+        restored_dict = dict_pers_service.recover_dict(self.store_id, self._representation_type)
 
         self.model_class_name = restored_dict[MODEL_CLASS_NAME]
 
@@ -239,16 +252,11 @@ class FullModelListRecoverInfo(AbstractListRecoverInfo):
                                                 restored_dict)
 
     def _persist_class_specific_fields(self, dict_representation, file_pers_service, dict_pers_service):
-        file_pers_service.save_file(self.model_code)
+        super()._persist_class_specific_fields(dict_representation, file_pers_service, dict_pers_service)
 
         for parameter_file in self.parameter_files:
             file_pers_service.save_file(parameter_file)
 
-        env_id = self.environment.persist(file_pers_service, dict_pers_service)
-
-        dict_representation[MODEL_CODE] = self.model_code.reference_id
-        dict_representation[MODEL_CLASS_NAME] = self.model_class_name
-        dict_representation[ENVIRONMENT] = env_id
         dict_representation[PARAMETERS] = [pf.reference_id for pf in self.parameter_files]
 
     def _add_reference_sizes(self, size_dict, file_pers_service, dict_pers_service):
