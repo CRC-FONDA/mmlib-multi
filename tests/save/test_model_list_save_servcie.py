@@ -12,6 +12,7 @@ from mmlib.schema.save_info_builder import ModelSaveInfoBuilder
 from mmlib.track_env import track_current_environment
 from mmlib.util.dummy_data import imagenet_input
 from mmlib.util.mongo import MongoService
+from tests.example_files.mynets.mobilenet import mobilenet_v2
 from tests.example_files.mynets.resnet18 import resnet18
 from tests.persistence.test_dict_persistence import MONGO_CONTAINER_NAME
 
@@ -57,19 +58,28 @@ class TestModelListSaveService(unittest.TestCase):
         if os.path.exists(self.abs_tmp_path):
             shutil.rmtree(self.abs_tmp_path)
 
-    def test_save_restore_ffnn_list(self):
+    def test_save_restore_resnet18_list(self):
         model_list = []
         for i in range(3):
             model = resnet18()
             model_list.append(model)
 
+        self._test_save_restore_model_list(model_list)
+
+    def test_save_restore_mobilenet_list(self):
+        model_list = []
+        for i in range(3):
+            model = mobilenet_v2()
+            model_list.append(model)
+
+        self._test_save_restore_model_list(model_list)
+
+    def _test_save_restore_model_list(self, model_list):
         save_info_builder = ModelSaveInfoBuilder()
         env = track_current_environment()
         save_info_builder.add_model_info(model_list=model_list, env=env)
         save_info: ModelListSaveInfo = save_info_builder.build()
-
         model_list_id = self.save_service.save_models(save_info)
         restored_model_list_info = self.save_service.recover_models(model_list_id)
-
         for recovered_model, model in zip(restored_model_list_info.models, model_list):
             self.assertTrue(model_equal(model, recovered_model, imagenet_input))
