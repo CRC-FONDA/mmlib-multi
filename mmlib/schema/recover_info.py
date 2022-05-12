@@ -237,6 +237,12 @@ class AbstractListRecoverInfo(SchemaObj, metaclass=abc.ABCMeta):
         self.environment = _recover_environment(dict_pers_service, file_pers_service, load_recursive, restore_root,
                                                 restored_dict)
 
+    def _add_reference_sizes(self, size_dict, file_pers_service, dict_pers_service):
+        size_dict[ENVIRONMENT] = self.environment.size_info(file_pers_service, dict_pers_service)
+
+        file_pers_service.file_size(self.model_code)
+        size_dict[MODEL_CODE] = self.model_code.size
+
 
 class FullModelListRecoverInfo(AbstractListRecoverInfo):
 
@@ -267,10 +273,7 @@ class FullModelListRecoverInfo(AbstractListRecoverInfo):
         dict_representation[PARAMETERS] = [pf.reference_id for pf in self.parameter_files]
 
     def _add_reference_sizes(self, size_dict, file_pers_service, dict_pers_service):
-        size_dict[ENVIRONMENT] = self.environment.size_info(file_pers_service, dict_pers_service)
-
-        file_pers_service.file_size(self.model_code)
-        size_dict[MODEL_CODE] = self.model_code.size
+        super()._add_reference_sizes(size_dict, file_pers_service, dict_pers_service)
 
         param_sizes = []
         for parameter_file in self.parameter_files:
