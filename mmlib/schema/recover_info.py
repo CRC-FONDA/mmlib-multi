@@ -228,6 +228,15 @@ class AbstractListRecoverInfo(SchemaObj, metaclass=abc.ABCMeta):
         dict_representation[MODEL_CLASS_NAME] = self.model_class_name
         dict_representation[ENVIRONMENT] = env_id
 
+    def _load_abstract_fields(self, restored_dict, file_pers_service: FilePersistenceService,
+                              dict_pers_service: DictPersistenceService, restore_root: str, load_recursive: bool = True,
+                              load_files: bool = True):
+        self.model_class_name = restored_dict[MODEL_CLASS_NAME]
+
+        self.model_code = _recover_model_code(file_pers_service, load_files, restore_root, restored_dict)
+        self.environment = _recover_environment(dict_pers_service, file_pers_service, load_recursive, restore_root,
+                                                restored_dict)
+
 
 class FullModelListRecoverInfo(AbstractListRecoverInfo):
 
@@ -244,12 +253,10 @@ class FullModelListRecoverInfo(AbstractListRecoverInfo):
                         restore_root: str, load_recursive: bool = True, load_files: bool = True):
         restored_dict = dict_pers_service.recover_dict(self.store_id, self._representation_type)
 
-        self.model_class_name = restored_dict[MODEL_CLASS_NAME]
+        super()._load_abstract_fields(restored_dict, file_pers_service, dict_pers_service, restore_root, load_recursive,
+                                      load_files)
 
-        self.model_code = _recover_model_code(file_pers_service, load_files, restore_root, restored_dict)
         self.parameter_files = _recover_parameter_list(file_pers_service, load_files, restore_root, restored_dict)
-        self.environment = _recover_environment(dict_pers_service, file_pers_service, load_recursive, restore_root,
-                                                restored_dict)
 
     def _persist_class_specific_fields(self, dict_representation, file_pers_service, dict_pers_service):
         super()._persist_class_specific_fields(dict_representation, file_pers_service, dict_pers_service)
