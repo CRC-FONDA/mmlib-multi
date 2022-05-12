@@ -323,7 +323,7 @@ class CompressedModelListRecoverInfo(AbstractListRecoverInfo):
         super()._add_reference_sizes(size_dict, file_pers_service, dict_pers_service)
 
         file_pers_service.file_size(self.compressed_parameters)
-        size_dict[UPDATE] = self.compressed_parameters.size
+        size_dict[PARAMETERS] = self.compressed_parameters.size
 
 
 def _recover_compressed_parameters(file_pers_service, load_files, restore_root, restored_dict):
