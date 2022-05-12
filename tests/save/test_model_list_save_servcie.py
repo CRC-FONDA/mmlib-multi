@@ -6,7 +6,7 @@ import torch
 
 from mmlib.equal import model_equal
 from mmlib.persistence import FileSystemPersistenceService, MongoDictPersistenceService
-from mmlib.save import ModelListSaveService
+from mmlib.save import FullModelListSaveService
 from mmlib.save_info import ModelListSaveInfo
 from mmlib.schema.save_info_builder import ModelSaveInfoBuilder
 from mmlib.track_env import track_current_environment
@@ -48,7 +48,7 @@ class TestModelListSaveService(unittest.TestCase):
         self.init_save_service(self.dict_pers_service, self.file_pers_service)
 
     def init_save_service(self, dict_pers_service, file_pers_service):
-        self.save_service = ModelListSaveService(file_pers_service, dict_pers_service, logging=True)
+        self.save_service = FullModelListSaveService(file_pers_service, dict_pers_service, logging=True)
 
     def tearDown(self) -> None:
         self.__clean_up()
@@ -75,11 +75,20 @@ class TestModelListSaveService(unittest.TestCase):
         self._test_save_restore_model_list(model_list)
 
     def _test_save_restore_model_list(self, model_list):
+        model_list_id = self._save_models(model_list)
+        restored_model_list_info = self.save_service.recover_models(model_list_id)
+        for recovered_model, model in zip(restored_model_list_info.models, model_list):
+            self.assertTrue(model_equal(model, recovered_model, imagenet_input))
+
+    def _save_models(self, model_list):
         save_info_builder = ModelSaveInfoBuilder()
         env = track_current_environment()
         save_info_builder.add_model_info(model_list=model_list, env=env)
         save_info: ModelListSaveInfo = save_info_builder.build()
         model_list_id = self.save_service.save_models(save_info)
-        restored_model_list_info = self.save_service.recover_models(model_list_id)
-        for recovered_model, model in zip(restored_model_list_info.models, model_list):
-            self.assertTrue(model_equal(model, recovered_model, imagenet_input))
+        return model_list_id
+
+    def test_save_different_models(self):
+        model_list = [mobilenet_v2(), resnet18()]
+        with self.assertRaises(AssertionError):
+            self._save_models(model_list)

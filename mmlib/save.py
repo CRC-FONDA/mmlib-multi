@@ -581,8 +581,37 @@ class ProvenanceSaveService(BaselineSaveService):
             raise NotImplementedError
 
 
-class ModelListSaveService(BaselineSaveService):
+class AbstractModelListSaveService(BaselineSaveService):
+    def save_model(self, model_save_info: ModelListSaveInfo) -> str:
+        assert self._same_architecture(model_save_info.models), "models in model list have to have same architecture"
+
+    def _same_architecture(self, models):
+        # if only one model in list it has the same architecture
+        if len(models) == 1:
+            return True
+        else:
+            # else check if we find the same tensor shape for all keys
+            first_model_state = models[0].state_dict()
+            for model in models:
+                current_state = model.state_dict()
+                for first_model_key, first_model_tensor in first_model_state.items():
+                    first_shape = first_model_tensor.shape
+
+                    # check if layer exists
+                    if first_model_key not in current_state:
+                        return False
+
+                    # if layer exists check if shape is equal
+                    current_shape = current_state[first_model_key].shape
+                    if not current_shape == first_shape:
+                        return False
+
+            return True
+
+
+class FullModelListSaveService(AbstractModelListSaveService):
     def save_models(self, save_info: ModelListSaveInfo):
+        super().save_model(model_save_info=save_info)
         models_id = self._save_full_models(save_info)
 
         return models_id
@@ -625,8 +654,9 @@ class ModelListSaveService(BaselineSaveService):
             return RestoredModelListInfo(models=recovered_models)
 
 
-class CompressedModelListSaveService(BaselineSaveService):
+class CompressedModelListSaveService(AbstractModelListSaveService):
     def save_models(self, save_info: ModelListSaveInfo):
+        super().save_model(model_save_info=save_info)
         model_ids = self._save_compressed_models(save_info)
 
         return model_ids
