@@ -1,6 +1,7 @@
 from mmlib.persistence import FilePersistenceService, DictPersistenceService
 from mmlib.schema.model_info import STORE_TYPE, RECOVER_INFO_ID
-from mmlib.schema.recover_info import AbstractListRecoverInfo, LIST_RECOVER_INFO, FullModelListRecoverInfo
+from mmlib.schema.recover_info import AbstractListRecoverInfo, LIST_RECOVER_INFO, FullModelListRecoverInfo, \
+    CompressedModelListRecoverInfo
 from mmlib.schema.schema_obj import SchemaObj
 from mmlib.schema.store_type import ModelListStoreType
 
@@ -62,6 +63,12 @@ def _recover_recover_info(restored_dict, dict_pers_service, file_pers_service, r
                                                          restore_root, load_recursive, load_files)
         else:
             recover_info = FullModelListRecoverInfo.load_placeholder(recover_info_id)
+    elif store_type == ModelListStoreType.COMPRESSED_PARAMETERS:
+        if load_recursive:
+            recover_info = CompressedModelListRecoverInfo.load(recover_info_id, file_pers_service, dict_pers_service,
+                                                         restore_root, load_recursive, load_files)
+        else:
+            recover_info = CompressedModelListRecoverInfo.load_placeholder(recover_info_id)
     else:
         assert False, 'Invalid store type'
     return recover_info

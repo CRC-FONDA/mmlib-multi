@@ -212,6 +212,10 @@ def _restore_train_info(dict_pers_service, file_pers_service, restore_root, rest
 
 class AbstractListRecoverInfo(SchemaObj, metaclass=abc.ABCMeta):
 
+    @property
+    def _representation_type(self) -> str:
+        return LIST_RECOVER_INFO
+
     def __init__(self, model_code: FileReference = None, model_class_name: str = None, environment: Environment = None,
                  store_id: str = None):
         super().__init__(store_id)
@@ -245,10 +249,6 @@ class AbstractListRecoverInfo(SchemaObj, metaclass=abc.ABCMeta):
 
 
 class FullModelListRecoverInfo(AbstractListRecoverInfo):
-
-    @property
-    def _representation_type(self) -> str:
-        return LIST_RECOVER_INFO
 
     def __init__(self, parameter_files: [FileReference] = None, model_code: FileReference = None,
                  model_class_name: str = None, environment: Environment = None, store_id: str = None):
@@ -293,3 +293,43 @@ def _recover_parameter_list(file_pers_service, load_files, restore_root, restore
         parameter_files.append(parameters_file)
 
     return parameter_files
+
+
+class CompressedModelListRecoverInfo(AbstractListRecoverInfo):
+
+    def __init__(self, compressed_parameters: FileReference = None, model_code: FileReference = None,
+                 model_class_name: str = None, environment: Environment = None, store_id: str = None):
+        super().__init__(model_code, model_class_name, environment, store_id)
+        self.compressed_parameters = compressed_parameters
+
+    def load_all_fields(self, file_pers_service: FilePersistenceService, dict_pers_service: DictPersistenceService,
+                        restore_root: str, load_recursive: bool = True, load_files: bool = True):
+        restored_dict = dict_pers_service.recover_dict(self.store_id, self._representation_type)
+
+        super()._load_abstract_fields(restored_dict, file_pers_service, dict_pers_service, restore_root, load_recursive,
+                                      load_files)
+
+        self.compressed_parameters = _recover_compressed_parameters(file_pers_service, load_files, restore_root,
+                                                                    restored_dict)
+
+    def _persist_class_specific_fields(self, dict_representation, file_pers_service, dict_pers_service):
+        super()._persist_class_specific_fields(dict_representation, file_pers_service, dict_pers_service)
+
+        file_pers_service.save_file(self.compressed_parameters)
+        dict_representation[PARAMETERS] = self.compressed_parameters.reference_id
+
+    def _add_reference_sizes(self, size_dict, file_pers_service, dict_pers_service):
+        super()._add_reference_sizes(size_dict, file_pers_service, dict_pers_service)
+
+        file_pers_service.file_size(self.compressed_parameters)
+        size_dict[UPDATE] = self.compressed_parameters.size
+
+
+def _recover_compressed_parameters(file_pers_service, load_files, restore_root, restored_dict):
+    update_id = restored_dict[PARAMETERS]
+    update = FileReference(reference_id=update_id)
+
+    if load_files:
+        file_pers_service.recover_file(update, restore_root)
+
+    return update

@@ -1,8 +1,11 @@
 import abc
+import math
 import os
 import tempfile
 import warnings
+import zlib
 
+import numpy as np
 import torch
 
 from mmlib.equal import tensor_equal
@@ -13,12 +16,12 @@ from mmlib.schema.file_reference import FileReference
 from mmlib.schema.model_info import ModelInfo, MODEL_INFO
 from mmlib.schema.model_list_info import ModelListInfo
 from mmlib.schema.recover_info import FullModelRecoverInfo, WeightsUpdateRecoverInfo, ProvenanceRecoverInfo, \
-    FullModelListRecoverInfo
+    FullModelListRecoverInfo, CompressedModelListRecoverInfo
 from mmlib.schema.restorable_object import RestoredModelInfo, RestoredModelListInfo
 from mmlib.schema.store_type import ModelStoreType, ModelListStoreType
 from mmlib.schema.train_info import TrainInfo
 from mmlib.track_env import compare_env_to_current
-from mmlib.util.helper import log_start, log_stop
+from mmlib.util.helper import log_start, log_stop, to_byte_tensor, torch_dtype_to_numpy_dict, to_tensor
 from mmlib.util.init_from_file import create_object, create_type
 from mmlib.util.weight_dict_merkle_tree import WeightDictMerkleTree, THIS, OTHER
 
@@ -38,6 +41,8 @@ PARAMETERS_PATCH = "parameters_patch"
 RESTORE_PATH = 'restore_path'
 
 MODEL_WEIGHTS = 'model_weights.pt'
+
+PARAMETERS = 'parameters'
 
 
 # Future work, se if it would make sense to use protocol here
@@ -578,9 +583,9 @@ class ProvenanceSaveService(BaselineSaveService):
 
 class ModelListSaveService(BaselineSaveService):
     def save_models(self, save_info: ModelListSaveInfo):
-        model_ids = self._save_full_models(save_info)
+        models_id = self._save_full_models(save_info)
 
-        return model_ids
+        return models_id
 
     def _save_full_models(self, save_info: ModelListSaveInfo):
         model_list = save_info.models
@@ -618,6 +623,103 @@ class ModelListSaveService(BaselineSaveService):
                 recovered_models.append(model)
 
             return RestoredModelListInfo(models=recovered_models)
+
+
+class CompressedModelListSaveService(BaselineSaveService):
+    def save_models(self, save_info: ModelListSaveInfo):
+        model_ids = self._save_compressed_models(save_info)
+
+        return model_ids
+
+    def _save_compressed_models(self, save_info):
+        model_list = save_info.models
+
+        aggregated_parameters = bytearray()
+        for model in model_list:
+            model_state = model.state_dict()
+            for _, tensor, in model_state.items():
+                aggregated_parameters.extend(tensor.numpy().tobytes())
+
+        with tempfile.TemporaryDirectory() as tmp_path:
+
+            # FIXME hardcoded for now
+            compression_method = zlib.compress
+            compression_kwargs = {}
+
+            # compress bytearray if method given
+            if compression_method:
+                aggregated_parameters = compression_method(aggregated_parameters, **compression_kwargs)
+
+            # convert to a byte tensor for efficient storage
+            byte_tensor = to_byte_tensor(aggregated_parameters)
+            # save byte tensor to disk
+            param_file = FileReference(path=os.path.join(tmp_path, PARAMETERS))
+            torch.save(byte_tensor, param_file.path)
+
+            recover_info = CompressedModelListRecoverInfo(model_code=FileReference(path=save_info.model_code),
+                                                          model_class_name=save_info.model_class_name,
+                                                          environment=save_info.environment,
+                                                          compressed_parameters=param_file)
+
+            model_list_info = ModelListInfo(store_type=ModelListStoreType.COMPRESSED_PARAMETERS,
+                                            recover_info=recover_info)
+
+            model_info_id = model_list_info.persist(self._file_pers_service, self._dict_pers_service)
+
+            return model_info_id
+
+    def recover_models(self, model_list_id: str, execute_checks: bool = True) -> RestoredModelListInfo:
+        recovered_models = []
+
+        with tempfile.TemporaryDirectory() as tmp_path:
+            model_info = ModelListInfo.load(model_list_id, self._file_pers_service, self._dict_pers_service,
+                                            tmp_path, load_recursive=True, load_files=True)
+
+            recover_info: CompressedModelListRecoverInfo = model_info.recover_info
+
+            # load raw data from disk and decompress
+            data = torch.load(recover_info.compressed_parameters.path).numpy().tobytes()
+
+            # FIXME hardcoded for now
+            decompression_method = zlib.decompress
+
+            if decompression_method:
+                data = decompression_method(data)
+
+            # position byte array to read form
+            byte_pointer = 0
+            # read until we have no data left
+            while byte_pointer < len(data):
+                # create a copy of the example model and load new weights in it
+                model = create_object(recover_info.model_code.path, recover_info.model_class_name)
+                model_state = model.state_dict()
+                for k, _tensor in model_state.items():
+                    # the number of bytes we have to extract is equivalent to:
+                    # the number of values the tensor holds * number of bytes for the datatype (for one float 4 bytes)
+                    shape = _tensor.shape
+                    num_bytes = math.prod(shape) * self._bytes_per_value(_tensor.dtype)
+                    # read the bytes for the tensor
+                    byte_data = data[byte_pointer:byte_pointer + num_bytes]
+                    # form tensor out of bytes, and reshape
+                    np_dtype = np.dtype(torch_dtype_to_numpy_dict[_tensor.dtype])
+                    recovered_tensor = to_tensor(byte_data, np_dtype)
+                    recovered_tensor = torch.reshape(recovered_tensor, shape)
+                    # override the recovered tensor in the state dict
+                    model_state[k] = recovered_tensor
+
+                    # update byte pointer to read form correct position
+                    byte_pointer += num_bytes
+
+                # as soon as state_dict for one model is recovered load it back into model and append it to result
+                model.load_state_dict(model_state)
+                recovered_models.append(model)
+
+            return RestoredModelListInfo(models=recovered_models)
+
+    def _bytes_per_value(self, _type: torch.dtype):
+        # to be more efficient we can just create/save a lookup table
+        dummy_tensor = torch.tensor([1], dtype=_type)
+        return len(dummy_tensor.numpy().tobytes())
 
 
 def _get_weights_hash_info(add_weights_hash_info, model_save_info):

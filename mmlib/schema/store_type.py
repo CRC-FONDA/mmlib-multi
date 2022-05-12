@@ -9,3 +9,4 @@ class ModelStoreType(Enum):
 
 class ModelListStoreType(Enum):
     FULL_MODEL = '1'
+    COMPRESSED_PARAMETERS = '2'
