@@ -277,7 +277,8 @@ class FullModelListRecoverInfo(AbstractListRecoverInfo):
 
         param_sizes = []
         for parameter_file in self.parameter_files:
-            param_sizes.append(file_pers_service.file_size(parameter_file))
+            file_pers_service.file_size(parameter_file)
+            param_sizes.append(parameter_file.size)
 
         size_dict[PARAMETERS] = sum(param_sizes)
 
