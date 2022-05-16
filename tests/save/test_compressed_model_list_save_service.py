@@ -1,5 +1,3 @@
-import unittest
-
 from mmlib.save import CompressedModelListSaveService
 from tests.save.test_model_list_save_servcie import TestModelListSaveService
 
