@@ -3,7 +3,6 @@ import math
 import os
 import tempfile
 import warnings
-import zlib
 
 import numpy as np
 import torch
@@ -25,24 +24,23 @@ from mmlib.util.helper import log_start, log_stop, to_byte_tensor, torch_dtype_t
 from mmlib.util.init_from_file import create_object, create_type
 from mmlib.util.weight_dict_merkle_tree import WeightDictMerkleTree, THIS, OTHER
 
-PROVENANCE = 'provenance'
-
-PARAM_UPDATE = 'param_update'
-
 BASELINE = 'baseline'
+PARAM_UPDATE = 'param_update'
+PROVENANCE = 'provenance'
 
 START = 'START'
 STOP = 'STOP'
 
 PICKLED_MODEL_PARAMETERS = 'pickled_model_parameters'
-
 PARAMETERS_PATCH = "parameters_patch"
-
 RESTORE_PATH = 'restore_path'
-
 MODEL_WEIGHTS = 'model_weights.pt'
-
 PARAMETERS = 'parameters'
+
+COMPRESS_FUNC = 'compress_func'
+DECOMPRESS_FUNC = 'decompress_func'
+COMPRESS_KWARGS = 'compress_kwargs'
+DECOMPRESS_KWARGS = 'decompress_kwargs'
 
 
 # Future work, se if it would make sense to use protocol here
@@ -655,6 +653,27 @@ class FullModelListSaveService(AbstractModelListSaveService):
 
 
 class CompressedModelListSaveService(AbstractModelListSaveService):
+
+    def __init__(self, file_pers_service: FilePersistenceService, dict_pers_service: DictPersistenceService,
+                 compression_info: dict = None):
+
+        super().__init__(file_pers_service, dict_pers_service)
+
+        if compression_info:
+            # check if compression_funcs are there
+            assert COMPRESS_FUNC in compression_info, 'no compression method found'
+            assert DECOMPRESS_FUNC in compression_info, 'no decompression method found'
+            assert COMPRESS_KWARGS in compression_info, 'no compression args found'
+            assert DECOMPRESS_KWARGS in compression_info, 'no decompression args found'
+            self.compression_info = compression_info
+        else:
+            self.compression_info = {
+                COMPRESS_FUNC: None,
+                COMPRESS_KWARGS: {},
+                DECOMPRESS_FUNC: None,
+                DECOMPRESS_KWARGS: {}
+            }
+
     def save_models(self, save_info: ModelListSaveInfo):
         super().save_model(model_save_info=save_info)
         model_ids = self._save_compressed_models(save_info)
@@ -672,9 +691,8 @@ class CompressedModelListSaveService(AbstractModelListSaveService):
 
         with tempfile.TemporaryDirectory() as tmp_path:
 
-            # FIXME hardcoded for now
-            compression_method = zlib.compress
-            compression_kwargs = {}
+            compression_method = self.compression_info[COMPRESS_FUNC]
+            compression_kwargs = self.compression_info[COMPRESS_KWARGS]
 
             # compress bytearray if method given
             if compression_method:
@@ -710,11 +728,11 @@ class CompressedModelListSaveService(AbstractModelListSaveService):
             # load raw data from disk and decompress
             data = torch.load(recover_info.compressed_parameters.path).numpy().tobytes()
 
-            # FIXME hardcoded for now
-            decompression_method = zlib.decompress
+            decompression_method = self.compression_info[DECOMPRESS_FUNC]
+            decompression_kwargs = self.compression_info[DECOMPRESS_KWARGS]
 
             if decompression_method:
-                data = decompression_method(data)
+                data = decompression_method(data, **decompression_kwargs)
 
             # position byte array to read form
             byte_pointer = 0
