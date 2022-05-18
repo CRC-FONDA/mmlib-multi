@@ -20,7 +20,7 @@ from mmlib.schema.restorable_object import RestoredModelInfo, RestoredModelListI
 from mmlib.schema.store_type import ModelStoreType, ModelListStoreType
 from mmlib.schema.train_info import TrainInfo
 from mmlib.track_env import compare_env_to_current
-from mmlib.util.helper import log_start, log_stop, to_byte_tensor, torch_dtype_to_numpy_dict, to_tensor
+from mmlib.util.helper import log_start, log_stop, torch_dtype_to_numpy_dict, to_tensor
 from mmlib.util.init_from_file import create_object, create_type
 from mmlib.util.weight_dict_merkle_tree import WeightDictMerkleTree, THIS, OTHER
 
@@ -698,11 +698,11 @@ class CompressedModelListSaveService(AbstractModelListSaveService):
             if compression_method:
                 aggregated_parameters = compression_method(aggregated_parameters, **compression_kwargs)
 
-            # convert to a byte tensor for efficient storage
-            byte_tensor = to_byte_tensor(aggregated_parameters)
-            # save byte tensor to disk
+            # save aggregated parameters to binary file -> minimal overhead
             param_file = FileReference(path=os.path.join(tmp_path, PARAMETERS))
-            torch.save(byte_tensor, param_file.path)
+
+            with open(param_file.path, 'wb') as f:
+                f.write(aggregated_parameters)
 
             recover_info = CompressedModelListRecoverInfo(model_code=FileReference(path=save_info.model_code),
                                                           model_class_name=save_info.model_class_name,
@@ -726,43 +726,45 @@ class CompressedModelListSaveService(AbstractModelListSaveService):
             recover_info: CompressedModelListRecoverInfo = model_info.recover_info
 
             # load raw data from disk and decompress
-            data = torch.load(recover_info.compressed_parameters.path).numpy().tobytes()
+            # read binary file
+            with open(recover_info.compressed_parameters.path, 'rb') as f:
+                data = f.read()
 
-            decompression_method = self.compression_info[DECOMPRESS_FUNC]
-            decompression_kwargs = self.compression_info[DECOMPRESS_KWARGS]
+                decompression_method = self.compression_info[DECOMPRESS_FUNC]
+                decompression_kwargs = self.compression_info[DECOMPRESS_KWARGS]
 
-            if decompression_method:
-                data = decompression_method(data, **decompression_kwargs)
+                if decompression_method:
+                    data = decompression_method(data, **decompression_kwargs)
 
-            # position byte array to read form
-            byte_pointer = 0
-            # read until we have no data left
-            while byte_pointer < len(data):
-                # create a copy of the example model and load new weights in it
-                model = create_object(recover_info.model_code.path, recover_info.model_class_name)
-                model_state = model.state_dict()
-                for k, _tensor in model_state.items():
-                    # the number of bytes we have to extract is equivalent to:
-                    # the number of values the tensor holds * number of bytes for the datatype (for one float 4 bytes)
-                    shape = _tensor.shape
-                    num_bytes = math.prod(shape) * self._bytes_per_value(_tensor.dtype)
-                    # read the bytes for the tensor
-                    byte_data = data[byte_pointer:byte_pointer + num_bytes]
-                    # form tensor out of bytes, and reshape
-                    np_dtype = np.dtype(torch_dtype_to_numpy_dict[_tensor.dtype])
-                    recovered_tensor = to_tensor(byte_data, np_dtype)
-                    recovered_tensor = torch.reshape(recovered_tensor, shape)
-                    # override the recovered tensor in the state dict
-                    model_state[k] = recovered_tensor
+                # position byte array to read form
+                byte_pointer = 0
+                # read until we have no data left
+                while byte_pointer < len(data):
+                    # create a copy of the example model and load new weights in it
+                    model = create_object(recover_info.model_code.path, recover_info.model_class_name)
+                    model_state = model.state_dict()
+                    for k, _tensor in model_state.items():
+                        # the number of bytes we have to extract is equivalent to:
+                        # the number of values the tensor holds * number of bytes for the datatype (for one float 4 bytes)
+                        shape = _tensor.shape
+                        num_bytes = math.prod(shape) * self._bytes_per_value(_tensor.dtype)
+                        # read the bytes for the tensor
+                        byte_data = data[byte_pointer:byte_pointer + num_bytes]
+                        # form tensor out of bytes, and reshape
+                        np_dtype = np.dtype(torch_dtype_to_numpy_dict[_tensor.dtype])
+                        recovered_tensor = to_tensor(byte_data, np_dtype)
+                        recovered_tensor = torch.reshape(recovered_tensor, shape)
+                        # override the recovered tensor in the state dict
+                        model_state[k] = recovered_tensor
 
-                    # update byte pointer to read form correct position
-                    byte_pointer += num_bytes
+                        # update byte pointer to read form correct position
+                        byte_pointer += num_bytes
 
-                # as soon as state_dict for one model is recovered load it back into model and append it to result
-                model.load_state_dict(model_state)
-                recovered_models.append(model)
+                    # as soon as state_dict for one model is recovered load it back into model and append it to result
+                    model.load_state_dict(model_state)
+                    recovered_models.append(model)
 
-            return RestoredModelListInfo(models=recovered_models)
+                return RestoredModelListInfo(models=recovered_models)
 
     def _bytes_per_value(self, _type: torch.dtype):
         # to be more efficient we can just create/save a lookup table
