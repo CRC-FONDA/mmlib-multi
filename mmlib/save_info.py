@@ -29,9 +29,11 @@ class SingleModelSaveInfo(ModelSaveInfo):
 
 
 class ModelListSaveInfo(ModelSaveInfo):
-    def __init__(self, models: [torch.nn.Module], environment: Environment, model_code: str = None):
+    def __init__(self, models: [torch.nn.Module], environment: Environment, model_code: str = None,
+                 derived_from: str = None):
         super().__init__(environment)
         self.models = models
+        self.derived_from = derived_from
         if models[0]:
             self.model_class_name = class_name(models[0])
             self.model_code = self._get_model_code(model_code, models[0])

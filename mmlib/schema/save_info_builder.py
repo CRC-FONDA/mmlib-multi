@@ -12,6 +12,7 @@ class ModelSaveInfoBuilder:
         super().__init__()
         self._model = None
         self._base_model = None
+        self._derived_from = None
         self._model_list = None
         self._code = None
         self._prov_raw_data = None
@@ -23,7 +24,7 @@ class ModelSaveInfoBuilder:
         self.prov_model_info_added = False
 
     def add_model_info(self, env: Environment, model: torch.nn.Module = None, code: str = None,
-                       base_model_id: str = None, model_list: [torch.nn.Module] = None):
+                       base_model_id: str = None, model_list: [torch.nn.Module] = None, _derived_from=None):
         """
         Adds the general model information
         :param env: The environment the training was/will be performed in.
@@ -37,6 +38,7 @@ class ModelSaveInfoBuilder:
         self._env = env
         self._model = model
         self._base_model = base_model_id
+        self._derived_from = _derived_from
         self._code = code
         self._model_list = model_list
         self.general_model_info_added = True
@@ -81,7 +83,8 @@ class ModelSaveInfoBuilder:
         save_info = ModelListSaveInfo(
             models=self._model_list,
             model_code=self._code,
-            environment=self._env
+            environment=self._env,
+            derived_from=self._derived_from
         )
 
         return save_info

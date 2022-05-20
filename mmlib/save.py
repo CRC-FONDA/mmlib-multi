@@ -778,6 +778,21 @@ class CompressedModelListSaveService(AbstractModelListSaveService):
         return len(dummy_tensor.numpy().tobytes())
 
 
+class DiffModelListSaveService(CompressedModelListSaveService):
+
+    def __init__(self, file_pers_service: FilePersistenceService, dict_pers_service: DictPersistenceService,
+                 compression_info: dict = None):
+        super().__init__(file_pers_service, dict_pers_service, compression_info)
+
+    def save_models(self, save_info: ModelListSaveInfo):
+        if save_info.derived_from is None:
+            models_id = super().save_models(save_info=save_info)
+        else:
+            models_id = None
+
+        return models_id
+
+
 def _get_weights_hash_info(add_weights_hash_info, model_save_info):
     weights_hash_info = None
     if add_weights_hash_info:
