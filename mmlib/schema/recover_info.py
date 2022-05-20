@@ -11,6 +11,8 @@ from mmlib.schema.schema_obj import SchemaObj
 from mmlib.schema.train_info import TrainInfo
 from mmlib.util.helper import copy_all_data, clean
 
+UPDATE_LIST = 'update_list'
+
 RECOVER_INFO = 'recover_info'
 LIST_RECOVER_INFO = 'list_recover_info'
 
@@ -124,6 +126,26 @@ def _restore_update(file_pers_service, load_files, restore_root, restored_dict):
         file_pers_service.recover_file(update, restore_root)
 
     return update
+
+
+class ListWeightsUpdateRecoverInfo(WeightsUpdateRecoverInfo):
+
+    def __init__(self, update: FileReference = None, update_type: str = None, store_id: str = None,
+                 update_list: list = None):
+        super().__init__(update, update_type, store_id)
+        self.update_list = update_list
+
+    def load_all_fields(self, file_pers_service: FilePersistenceService, dict_pers_service: DictPersistenceService,
+                        restore_root: str, load_recursive: bool = True, load_files: bool = True):
+        restored_dict = dict_pers_service.recover_dict(self.store_id, RECOVER_INFO)
+
+        self.update = _restore_update(file_pers_service, load_files, restore_root, restored_dict)
+        self.update_type = restored_dict[UPDATE_TYPE]
+        self.update_list = restored_dict[UPDATE_LIST]
+
+    def _persist_class_specific_fields(self, dict_representation, file_pers_service, dict_pers_service):
+        super()._persist_class_specific_fields(dict_representation, file_pers_service, dict_pers_service)
+        dict_representation[UPDATE_LIST] = self.update_list
 
 
 DATASET = 'dataset'

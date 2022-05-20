@@ -63,7 +63,7 @@ class TestDiffModelListSaveService(unittest.TestCase):
         prev_state_dict = initial_model_list[1].state_dict()
         keys = list(state_dict.keys())
         for i in range(int(len(keys) / 2)):
-            key = keys[-(i + 1)]
+            key = keys[i]
             state_dict[key] = prev_state_dict[key]
         model.load_state_dict(state_dict)
         updated_list.append(model)
@@ -77,7 +77,6 @@ class TestDiffModelListSaveService(unittest.TestCase):
         derived_model_list_id = self._save_models(updated_list, derived_from=initial_model_list_id)
 
         restored_model_list_info = self.save_service.recover_models(initial_model_list_id)
-
         for recovered_model, model in zip(restored_model_list_info.models, initial_model_list):
             self.assertTrue(model_equal(model, recovered_model, dummy_ffnn_input))
 

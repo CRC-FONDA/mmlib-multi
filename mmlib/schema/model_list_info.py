@@ -1,7 +1,7 @@
 from mmlib.persistence import FilePersistenceService, DictPersistenceService
 from mmlib.schema.model_info import STORE_TYPE, RECOVER_INFO_ID, AbstractModelInfo, WEIGHTS_HASH_INFO
-from mmlib.schema.recover_info import AbstractListRecoverInfo, LIST_RECOVER_INFO, FullModelListRecoverInfo, \
-    CompressedModelListRecoverInfo
+from mmlib.schema.recover_info import LIST_RECOVER_INFO, FullModelListRecoverInfo, \
+    CompressedModelListRecoverInfo, ListWeightsUpdateRecoverInfo
 from mmlib.schema.store_type import ModelListStoreType
 from mmlib.util.weight_dict_merkle_tree import WeightDictMerkleTree
 
@@ -14,7 +14,7 @@ class ModelListInfo(AbstractModelInfo):
     def _representation_type(self) -> str:
         return MODEL_LIST_INFO
 
-    def __init__(self, store_type: ModelListStoreType = None, recover_info: AbstractListRecoverInfo = None,
+    def __init__(self, store_type: ModelListStoreType = None, recover_info=None,
                  store_id: str = None, derived_from_id: str = None,
                  models_weights_hash_info: [WeightDictMerkleTree] = None):
         super().__init__(store_id, derived_from_id)
@@ -23,6 +23,7 @@ class ModelListInfo(AbstractModelInfo):
         self.models_weights_hash_info = models_weights_hash_info
 
     def _persist_class_specific_fields(self, dict_representation, file_pers_service, dict_pers_service):
+        super()._persist_class_specific_fields(dict_representation, file_pers_service, dict_pers_service)
         recover_info_id = self.recover_info.persist(file_pers_service, dict_pers_service)
 
         # add mandatory fields
@@ -38,6 +39,8 @@ class ModelListInfo(AbstractModelInfo):
                         load_recursive: bool = False, load_files: bool = False):
 
         restored_dict = _recover_stored_dict(dict_pers_service, self.store_id)
+
+        super()._load_super_fields(restored_dict)
 
         # mandatory fields
         if not self.store_type:
@@ -79,13 +82,18 @@ def _recover_recover_info(restored_dict, dict_pers_service, file_pers_service, r
                                                                restore_root, load_recursive, load_files)
         else:
             recover_info = CompressedModelListRecoverInfo.load_placeholder(recover_info_id)
+    elif store_type == ModelListStoreType.COMPRESSED_PARAMETERS_DIFF:
+        if load_recursive:
+            recover_info = ListWeightsUpdateRecoverInfo.load(recover_info_id, file_pers_service, dict_pers_service,
+                                                             restore_root, load_recursive, load_files)
+        else:
+            recover_info = ListWeightsUpdateRecoverInfo.load_placeholder(recover_info_id)
     else:
         assert False, 'Invalid store type'
     return recover_info
 
 
 def _recover_models_weights_hash_info(restored_dict):
-
     if WEIGHTS_HASH_INFO in restored_dict:
         hash_info_list = restored_dict[WEIGHTS_HASH_INFO]
         return [WeightDictMerkleTree.from_python_dict(hash_info) for hash_info in hash_info_list]
