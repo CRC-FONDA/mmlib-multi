@@ -134,7 +134,7 @@ def to_tensor(b: bytes, dt, single_value=False):
     if single_value:
         return torch.tensor(np_array[0])
     else:
-        return torch.tensor(np_array)
+        return torch.tensor(np.array(np_array))
 
 
 numpy_to_torch_dtype_dict = {

@@ -680,6 +680,12 @@ class CompressedModelListSaveService(AbstractModelListSaveService):
 
         return model_ids
 
+    def model_save_size(self, model_id: str) -> dict:
+        place_holder = ModelListInfo.load_placeholder(model_id)
+        size_dict = place_holder.size_info(self._file_pers_service, self._dict_pers_service)
+
+        return size_dict
+
     def _save_compressed_models(self, save_info):
         model_list = save_info.models
 
