@@ -1,3 +1,5 @@
+from abc import ABC
+
 from mmlib.persistence import FilePersistenceService, DictPersistenceService
 from mmlib.schema.recover_info import FullModelRecoverInfo, AbstractRecoverInfo, WeightsUpdateRecoverInfo, \
     ProvenanceRecoverInfo, RECOVER_INFO
@@ -13,27 +15,43 @@ WEIGHTS_HASH_INFO = 'weights_hash_info'
 MODEL_INFO = 'model_info'
 
 
-class ModelInfo(SchemaObj):
+class AbstractModelInfo(SchemaObj, ABC):
+
+    def __init__(self, store_id: str = None, derived_from_id: str = None):
+        super().__init__(store_id)
+        self.derived_from = derived_from_id
+
+    def _persist_class_specific_fields(self, dict_representation, file_pers_service, dict_pers_service):
+
+        if self.derived_from:
+            dict_representation[DERIVED_FROM] = self.derived_from
+
+    def _load_super_fields(self, restored_dict):
+
+        if not self.derived_from:
+            self.derived_from = _recover_derived_from(restored_dict)
+
+
+class ModelInfo(AbstractModelInfo):
 
     def __init__(self, store_type: ModelStoreType = None, recover_info: AbstractRecoverInfo = None,
                  store_id: str = None, derived_from_id: str = None, weights_hash_info: WeightDictMerkleTree = None):
-        super().__init__(store_id)
+
+        super().__init__(store_id, derived_from_id)
         self.store_type = store_type
         self.recover_info = recover_info
-        self.derived_from = derived_from_id
         self.weights_hash_info = weights_hash_info
 
     def _persist_class_specific_fields(self, dict_representation, file_pers_service, dict_pers_service):
 
-        recover_info_id = self.recover_info.persist(file_pers_service, dict_pers_service)
+        super()._persist_class_specific_fields(dict_representation, file_pers_service, dict_pers_service)
 
         # add mandatory fields
+        recover_info_id = self.recover_info.persist(file_pers_service, dict_pers_service)
         dict_representation[STORE_TYPE] = self.store_type.value
+
         dict_representation[RECOVER_INFO_ID] = recover_info_id
 
-        # add optional fields if set
-        if self.derived_from:
-            dict_representation[DERIVED_FROM] = self.derived_from
         if self.weights_hash_info:
             dict_representation[WEIGHTS_HASH_INFO] = self.weights_hash_info.to_python_dict()
 
@@ -42,6 +60,8 @@ class ModelInfo(SchemaObj):
                         load_recursive: bool = False, load_files: bool = False):
 
         restored_dict = _recover_stored_dict(dict_pers_service, self.store_id)
+
+        super()._load_super_fields(restored_dict)
 
         # mandatory fields
         if not self.store_type:
@@ -52,9 +72,6 @@ class ModelInfo(SchemaObj):
                                                       self.store_type, load_recursive, load_files)
 
         # optional fields
-        if not self.derived_from:
-            self.derived_from = _recover_derived_from(restored_dict)
-
         if not self.weights_hash_info:
             self.weights_hash_info = _recover_weights_hash_info(restored_dict)
 
@@ -113,6 +130,6 @@ def _recover_derived_from(restored_dict):
 
 
 def _recover_weights_hash_info(restored_dict):
-    hash_info_dict = restored_dict[WEIGHTS_HASH_INFO]
-    if hash_info_dict:
+    if WEIGHTS_HASH_INFO in restored_dict:
+        hash_info_dict = restored_dict[WEIGHTS_HASH_INFO]
         return WeightDictMerkleTree.from_python_dict(hash_info_dict)
