@@ -51,3 +51,11 @@ class ProvSingleModelSaveInfo(SingleModelSaveInfo):
         super().__init__(model, base_model, environment, model_code)
         self.raw_dataset = raw_dataset
         self.train_info = train_info
+
+
+class ProvListModelSaveInfo(ModelListSaveInfo):
+    def __init__(self, models: [torch.nn.Module] = None, derived_from: str = None, model_code: str = None,
+                 dataset_paths: [str] = None, train_info: TrainSaveInfo = None, environment: Environment = None):
+        super().__init__(models, environment, model_code, derived_from)
+        self.dataset_paths = dataset_paths
+        self.train_info = train_info

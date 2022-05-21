@@ -910,3 +910,7 @@ def _get_weights_hash_info(add_weights_hash_info, model_save_info):
         assert model_save_info.model, "to compute a weights info hash the a model has to be given"
         weights_hash_info = WeightDictMerkleTree.from_state_dict(model_save_info.model.state_dict())
     return weights_hash_info
+
+
+class ProvModelListSaveService(FullModelListSaveService):
+    pass

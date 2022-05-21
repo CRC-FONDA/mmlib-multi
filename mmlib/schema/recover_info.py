@@ -7,9 +7,11 @@ from mmlib.persistence import FilePersistenceService, DictPersistenceService
 from mmlib.schema.dataset import Dataset
 from mmlib.schema.environment import Environment
 from mmlib.schema.file_reference import FileReference
-from mmlib.schema.schema_obj import SchemaObj
+from mmlib.schema.schema_obj import SchemaObj, METADATA_SIZE
 from mmlib.schema.train_info import TrainInfo
 from mmlib.util.helper import copy_all_data, clean
+
+DATASETS = 'datasets'
 
 UPDATE_LIST = 'update_list'
 
@@ -371,42 +373,46 @@ class CompressedModelListRecoverInfo(AbstractListRecoverInfo):
         size_dict[PARAMETERS] = self.compressed_parameters.size
 
 
-# class ListProvenanceRecoverInfo(ProvenanceRecoverInfo):
-#     def __init__(self, datasets: [Dataset] = None, train_info: TrainInfo = None, environment: Environment = None,
-#                  store_id: str = None):
-#         super().__init__(store_id)
-#         self.datasets = datasets
-#         self.train_info = train_info
-#         self.environment = environment
-#
-#     def _persist_class_specific_fields(self, dict_representation, file_pers_service, dict_pers_service):
-#         dataset_id = self.dataset.persist(file_pers_service, dict_pers_service)
-#         env_id = self.environment.persist(file_pers_service, dict_pers_service)
-#         train_info_id = self.train_info.persist(file_pers_service, dict_pers_service)
-#
-#         dict_representation[DATASET] = dataset_id
-#         dict_representation[TRAIN_INFO] = train_info_id
-#         dict_representation[ENVIRONMENT] = env_id
-#
-#     def load_all_fields(self, file_pers_service: FilePersistenceService,
-#                         dict_pers_service: DictPersistenceService, restore_root: str,
-#                         load_recursive: bool = True, load_files: bool = True):
-#         restored_dict = dict_pers_service.recover_dict(self.store_id, RECOVER_INFO)
-#
-#         dataset_id = restored_dict[DATASET]
-#         self.dataset = _recover_data(dataset_id, dict_pers_service, file_pers_service, load_files, load_recursive,
-#                                      restore_root)
-#
-#         self.train_info = _restore_train_info(
-#             dict_pers_service, file_pers_service, restore_root, restored_dict, load_recursive, load_files)
-#
-#         self.environment = _recover_environment(dict_pers_service, file_pers_service, load_recursive, restore_root,
-#                                                 restored_dict)
-#
-#     def _add_reference_sizes(self, size_dict, file_pers_service, dict_pers_service):
-#         size_dict[ENVIRONMENT] = self.environment.size_info(file_pers_service, dict_pers_service)
-#         size_dict[TRAIN_INFO] = self.train_info.size_info(file_pers_service, dict_pers_service)
-#         size_dict[DATASET] = self.dataset.size_info(file_pers_service, dict_pers_service)
+class ListProvenanceRecoverInfo(ProvenanceRecoverInfo):
+
+    def __init__(self, datasets: [Dataset] = None, train_info: TrainInfo = None, environment: Environment = None,
+                 store_id: str = None):
+        super().__init__(train_info, environment, store_id)
+        self.datasets = datasets
+
+    def _persist_class_specific_fields(self, dict_representation, file_pers_service, dict_pers_service):
+        super()._persist_class_specific_fields(dict_representation, file_pers_service, dict_pers_service)
+        dataset_ids = []
+        for dataset in self.datasets:
+            dataset_id = dataset.persist(file_pers_service, dict_pers_service)
+            dataset_ids.append(dataset_id)
+
+        dict_representation[DATASETS] = dataset_ids
+
+    def load_all_fields(self, file_pers_service: FilePersistenceService,
+                        dict_pers_service: DictPersistenceService, restore_root: str,
+                        load_recursive: bool = True, load_files: bool = True):
+        restored_dict = dict_pers_service.recover_dict(self.store_id, RECOVER_INFO)
+
+        dataset_id = restored_dict[DATASETS]
+        self.datasets = _recover_data(dataset_id, dict_pers_service, file_pers_service, load_files, load_recursive,
+                                      restore_root)
+
+        self.train_info = _restore_train_info(
+            dict_pers_service, file_pers_service, restore_root, restored_dict, load_recursive, load_files)
+
+        self.environment = _recover_environment(dict_pers_service, file_pers_service, load_recursive, restore_root,
+                                                restored_dict)
+
+    def _add_reference_sizes(self, size_dict, file_pers_service, dict_pers_service):
+        super()._add_reference_sizes(size_dict, file_pers_service, dict_pers_service)
+        size_sum = 0
+        for dataset in self.datasets:
+            dataset_size_info = self.dataset.size_info(file_pers_service, dict_pers_service)
+            # WARNING here we only consider the size of the metadat and references, not of the underlying data
+            size_sum += dataset_size_info[METADATA_SIZE]
+
+        size_dict[DATASETS] = size_sum
 
 
 def _recover_compressed_parameters(file_pers_service, load_files, restore_root, restored_dict):
