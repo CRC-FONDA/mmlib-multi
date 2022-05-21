@@ -912,5 +912,11 @@ def _get_weights_hash_info(add_weights_hash_info, model_save_info):
     return weights_hash_info
 
 
-class ProvModelListSaveService(FullModelListSaveService):
-    pass
+class ProvModelListSaveService(CompressedModelListSaveService):
+    def save_models(self, save_info: ModelListSaveInfo, add_weights_hash_info=True):
+        if save_info.derived_from is None:
+            models_id = super().save_models(save_info=save_info, add_weights_hash_info=add_weights_hash_info)
+        else:
+            pass
+
+        return models_id

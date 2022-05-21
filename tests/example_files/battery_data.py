@@ -127,7 +127,7 @@ class BatteryData(Dataset):
         data_path = os.path.join(root, 'data.hdf5')
         data = read_dataset(data_path)
 
-        scalar_parameters = os.path.join(root, 'scalar_parameters.hdf5')
+        scalar_parameters = os.path.join(root, 'scaler_parameters.hdf5')
 
         if scalar_parameters:
             scaler_params = read_scaler_params(scalar_parameters)
