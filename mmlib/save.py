@@ -15,7 +15,7 @@ from mmlib.schema.file_reference import FileReference
 from mmlib.schema.model_info import ModelInfo, MODEL_INFO
 from mmlib.schema.model_list_info import ModelListInfo
 from mmlib.schema.recover_info import FullModelRecoverInfo, WeightsUpdateRecoverInfo, ProvenanceRecoverInfo, \
-    FullModelListRecoverInfo, CompressedModelListRecoverInfo, ListWeightsUpdateRecoverInfo
+    FullModelListRecoverInfo, CompressedModelListRecoverInfo, ListWeightsUpdateRecoverInfo, ListProvenanceRecoverInfo
 from mmlib.schema.restorable_object import RestoredModelInfo, RestoredModelListInfo
 from mmlib.schema.store_type import ModelStoreType, ModelListStoreType
 from mmlib.schema.train_info import TrainInfo
@@ -917,6 +917,38 @@ class ProvModelListSaveService(CompressedModelListSaveService):
         if save_info.derived_from is None:
             models_id = super().save_models(save_info=save_info, add_weights_hash_info=add_weights_hash_info)
         else:
-            pass
+            models_id = self._save_provenance_models(save_info)
 
         return models_id
+
+    def _save_provenance_models(self, save_info):
+        model_list_info = self._build_prov_model_info(save_info)
+        model_list_info_id = model_list_info.persist(self._file_pers_service, self._dict_pers_service)
+        return model_list_info_id
+
+    def _build_prov_model_info(self, save_info):
+        tw_class_name = save_info.train_info.train_wrapper_class_name
+        tw_code = FileReference(path=save_info.train_info.train_wrapper_code)
+        type_ = create_type(code=tw_code.path, type_name=tw_class_name)
+        train_service_wrapper = type_(
+            instance=save_info.train_info.train_service
+        )
+
+        datasets = [Dataset(FileReference(path=dataset_path)) for  dataset_path in save_info.dataset_paths]
+
+        train_info = TrainInfo(
+            ts_wrapper=train_service_wrapper,
+            ts_wrapper_code=tw_code,
+            ts_wrapper_class_name=tw_class_name,
+            train_kwargs=save_info.train_info.train_kwargs,
+        )
+        prov_recover_info = ListProvenanceRecoverInfo(
+            datasets=datasets,
+            train_info=train_info,
+            environment=save_info.environment
+        )
+
+        derived_from = save_info.derived_from if save_info.derived_from else None
+        model_info = ModelListInfo(store_type=ModelListStoreType.PROVENANCE, recover_info=prov_recover_info,
+                                   derived_from_id=derived_from)
+        return model_info

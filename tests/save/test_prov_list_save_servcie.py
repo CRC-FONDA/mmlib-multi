@@ -62,6 +62,9 @@ class TestProvListSaveService(TestModelListSaveService):
         ###################################
         ###################################
         ###################################
+        # TODO change this
+        updated_model_list = initial_model_list
+
         # set deterministic for debugging purposes
         set_deterministic()
 
@@ -91,7 +94,7 @@ class TestProvListSaveService(TestModelListSaveService):
         )
 
         optimizer_kwargs = {'lr': 10 ** -7}
-        optimizer = torch.optim.SGD(model.parameters(), **optimizer_kwargs)
+        optimizer = torch.optim.SGD(updated_model_list[0].parameters(), **optimizer_kwargs)
         state_dict[OPTIMIZER] = RestorableObjectWrapper(
             import_cmd='from torch.optim import SGD',
             init_args=optimizer_kwargs,
@@ -115,7 +118,7 @@ class TestProvListSaveService(TestModelListSaveService):
         save_info.dataset_paths = dataset_paths
         save_info.train_info = train_info
 
-        model_id = self.save_service.save_model(save_info)
+        model_id = self.save_service.save_models(save_info)
 
         ###################################
         ###################################

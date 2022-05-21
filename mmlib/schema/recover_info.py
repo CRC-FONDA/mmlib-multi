@@ -373,7 +373,7 @@ class CompressedModelListRecoverInfo(AbstractListRecoverInfo):
         size_dict[PARAMETERS] = self.compressed_parameters.size
 
 
-class ListProvenanceRecoverInfo(ProvenanceRecoverInfo):
+class ListProvenanceRecoverInfo(AbstractProvenanceRecoverInfo):
 
     def __init__(self, datasets: [Dataset] = None, train_info: TrainInfo = None, environment: Environment = None,
                  store_id: str = None):
