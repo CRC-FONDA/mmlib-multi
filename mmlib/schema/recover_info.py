@@ -152,23 +152,47 @@ DATASET = 'dataset'
 TRAIN_INFO = 'train_info'
 
 
-class ProvenanceRecoverInfo(AbstractRecoverInfo):
-
-    def __init__(self, dataset: Dataset = None, train_info: TrainInfo = None, environment: Environment = None,
-                 store_id: str = None):
+class AbstractProvenanceRecoverInfo(AbstractRecoverInfo):
+    def __init__(self, train_info: TrainInfo = None, environment: Environment = None, store_id: str = None):
         super().__init__(store_id)
-        self.dataset = dataset
         self.train_info = train_info
         self.environment = environment
 
     def _persist_class_specific_fields(self, dict_representation, file_pers_service, dict_pers_service):
-        dataset_id = self.dataset.persist(file_pers_service, dict_pers_service)
         env_id = self.environment.persist(file_pers_service, dict_pers_service)
         train_info_id = self.train_info.persist(file_pers_service, dict_pers_service)
 
-        dict_representation[DATASET] = dataset_id
         dict_representation[TRAIN_INFO] = train_info_id
         dict_representation[ENVIRONMENT] = env_id
+
+    def load_all_fields(self, file_pers_service: FilePersistenceService,
+                        dict_pers_service: DictPersistenceService, restore_root: str,
+                        load_recursive: bool = True, load_files: bool = True):
+        restored_dict = dict_pers_service.recover_dict(self.store_id, RECOVER_INFO)
+
+        self.train_info = _restore_train_info(
+            dict_pers_service, file_pers_service, restore_root, restored_dict, load_recursive, load_files)
+
+        self.environment = _recover_environment(dict_pers_service, file_pers_service, load_recursive, restore_root,
+                                                restored_dict)
+
+    def _add_reference_sizes(self, size_dict, file_pers_service, dict_pers_service):
+        size_dict[ENVIRONMENT] = self.environment.size_info(file_pers_service, dict_pers_service)
+        size_dict[TRAIN_INFO] = self.train_info.size_info(file_pers_service, dict_pers_service)
+
+
+class ProvenanceRecoverInfo(AbstractProvenanceRecoverInfo):
+
+    def __init__(self, dataset: Dataset = None, train_info: TrainInfo = None, environment: Environment = None,
+                 store_id: str = None):
+        super().__init__(train_info, environment, store_id)
+        self.dataset = dataset
+
+    def _persist_class_specific_fields(self, dict_representation, file_pers_service, dict_pers_service):
+        super()._persist_class_specific_fields(dict_representation, file_pers_service, dict_pers_service)
+        dataset_id = self.dataset.persist(file_pers_service, dict_pers_service)
+
+        dict_representation[DATASET] = dataset_id
 
     def load_all_fields(self, file_pers_service: FilePersistenceService,
                         dict_pers_service: DictPersistenceService, restore_root: str,
@@ -186,8 +210,7 @@ class ProvenanceRecoverInfo(AbstractRecoverInfo):
                                                 restored_dict)
 
     def _add_reference_sizes(self, size_dict, file_pers_service, dict_pers_service):
-        size_dict[ENVIRONMENT] = self.environment.size_info(file_pers_service, dict_pers_service)
-        size_dict[TRAIN_INFO] = self.train_info.size_info(file_pers_service, dict_pers_service)
+        super()._add_reference_sizes(size_dict, file_pers_service, dict_pers_service)
         size_dict[DATASET] = self.dataset.size_info(file_pers_service, dict_pers_service)
 
 
@@ -346,6 +369,44 @@ class CompressedModelListRecoverInfo(AbstractListRecoverInfo):
 
         file_pers_service.file_size(self.compressed_parameters)
         size_dict[PARAMETERS] = self.compressed_parameters.size
+
+
+# class ListProvenanceRecoverInfo(ProvenanceRecoverInfo):
+#     def __init__(self, datasets: [Dataset] = None, train_info: TrainInfo = None, environment: Environment = None,
+#                  store_id: str = None):
+#         super().__init__(store_id)
+#         self.datasets = datasets
+#         self.train_info = train_info
+#         self.environment = environment
+#
+#     def _persist_class_specific_fields(self, dict_representation, file_pers_service, dict_pers_service):
+#         dataset_id = self.dataset.persist(file_pers_service, dict_pers_service)
+#         env_id = self.environment.persist(file_pers_service, dict_pers_service)
+#         train_info_id = self.train_info.persist(file_pers_service, dict_pers_service)
+#
+#         dict_representation[DATASET] = dataset_id
+#         dict_representation[TRAIN_INFO] = train_info_id
+#         dict_representation[ENVIRONMENT] = env_id
+#
+#     def load_all_fields(self, file_pers_service: FilePersistenceService,
+#                         dict_pers_service: DictPersistenceService, restore_root: str,
+#                         load_recursive: bool = True, load_files: bool = True):
+#         restored_dict = dict_pers_service.recover_dict(self.store_id, RECOVER_INFO)
+#
+#         dataset_id = restored_dict[DATASET]
+#         self.dataset = _recover_data(dataset_id, dict_pers_service, file_pers_service, load_files, load_recursive,
+#                                      restore_root)
+#
+#         self.train_info = _restore_train_info(
+#             dict_pers_service, file_pers_service, restore_root, restored_dict, load_recursive, load_files)
+#
+#         self.environment = _recover_environment(dict_pers_service, file_pers_service, load_recursive, restore_root,
+#                                                 restored_dict)
+#
+#     def _add_reference_sizes(self, size_dict, file_pers_service, dict_pers_service):
+#         size_dict[ENVIRONMENT] = self.environment.size_info(file_pers_service, dict_pers_service)
+#         size_dict[TRAIN_INFO] = self.train_info.size_info(file_pers_service, dict_pers_service)
+#         size_dict[DATASET] = self.dataset.size_info(file_pers_service, dict_pers_service)
 
 
 def _recover_compressed_parameters(file_pers_service, load_files, restore_root, restored_dict):
