@@ -394,8 +394,11 @@ class ListProvenanceRecoverInfo(AbstractProvenanceRecoverInfo):
                         load_recursive: bool = True, load_files: bool = True):
         restored_dict = dict_pers_service.recover_dict(self.store_id, RECOVER_INFO)
 
-        dataset_id = restored_dict[DATASETS]
-        self.datasets = _recover_data(dataset_id, dict_pers_service, file_pers_service, load_files, load_recursive,
+        dataset_ids = restored_dict[DATASETS]
+
+        # FIXME just for now load the first dataset to correctly load TrainInfo,
+        # actually we have to load all datasets here
+        self.datasets = _recover_data(dataset_ids[0], dict_pers_service, file_pers_service, load_files, load_recursive,
                                       restore_root)
 
         self.train_info = _restore_train_info(

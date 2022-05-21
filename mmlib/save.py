@@ -934,7 +934,7 @@ class ProvModelListSaveService(CompressedModelListSaveService):
             instance=save_info.train_info.train_service
         )
 
-        datasets = [Dataset(FileReference(path=dataset_path)) for  dataset_path in save_info.dataset_paths]
+        datasets = [Dataset(FileReference(path=dataset_path)) for dataset_path in save_info.dataset_paths]
 
         train_info = TrainInfo(
             ts_wrapper=train_service_wrapper,
@@ -952,3 +952,33 @@ class ProvModelListSaveService(CompressedModelListSaveService):
         model_info = ModelListInfo(store_type=ModelListStoreType.PROVENANCE, recover_info=prov_recover_info,
                                    derived_from_id=derived_from)
         return model_info
+
+    def _get_base_model(self, model_id: str):
+        with tempfile.TemporaryDirectory() as tmp_path:
+            model_info = ModelListInfo.load(model_id, self._file_pers_service, self._dict_pers_service, tmp_path)
+            return model_info.derived_from
+
+    def recover_models(self, model_list_id: str, execute_checks: bool = True) -> RestoredModelListInfo:
+        if self._get_store_type(model_list_id).value < ModelListStoreType.PROVENANCE.value:
+            result = super().recover_models(model_list_id, execute_checks)
+        else:
+            base_models_id = self._get_base_model(model_list_id)
+            base_model_info = self.recover_models(base_models_id, execute_checks)
+            base_models = base_model_info.models
+
+            with tempfile.TemporaryDirectory() as tmp_path:
+                restore_dir = os.path.join(tmp_path, RESTORE_PATH)
+                os.mkdir(restore_dir)
+
+                model_info = ModelListInfo.load(model_list_id, self._file_pers_service, self._dict_pers_service,
+                                                restore_dir, load_recursive=True, load_files=True)
+
+                # from here on crash guaranteed because not adjusted
+                recover_info: ListProvenanceRecoverInfo = model_info.recover_info
+                train_service = recover_info.train_info.train_service_wrapper.instance
+                train_kwargs = recover_info.train_info.train_kwargs
+                # FIXME train all models, not only index 0
+                train_service.train(base_models[0], **train_kwargs)
+                # after training the base models are the recovered models
+                result = RestoredModelListInfo(models=base_models)
+        return result

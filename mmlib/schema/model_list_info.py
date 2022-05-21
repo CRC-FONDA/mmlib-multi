@@ -1,7 +1,7 @@
 from mmlib.persistence import FilePersistenceService, DictPersistenceService
 from mmlib.schema.model_info import STORE_TYPE, RECOVER_INFO_ID, AbstractModelInfo, WEIGHTS_HASH_INFO
 from mmlib.schema.recover_info import LIST_RECOVER_INFO, FullModelListRecoverInfo, \
-    CompressedModelListRecoverInfo, ListWeightsUpdateRecoverInfo
+    CompressedModelListRecoverInfo, ListWeightsUpdateRecoverInfo, ListProvenanceRecoverInfo
 from mmlib.schema.store_type import ModelListStoreType
 from mmlib.util.weight_dict_merkle_tree import WeightDictMerkleTree
 
@@ -88,6 +88,12 @@ def _recover_recover_info(restored_dict, dict_pers_service, file_pers_service, r
                                                              restore_root, load_recursive, load_files)
         else:
             recover_info = ListWeightsUpdateRecoverInfo.load_placeholder(recover_info_id)
+    elif store_type == ModelListStoreType.PROVENANCE:
+        if load_recursive:
+            recover_info = ListProvenanceRecoverInfo.load(recover_info_id, file_pers_service, dict_pers_service,
+                                                          restore_root, load_recursive, load_files)
+        else:
+            recover_info = ListProvenanceRecoverInfo.load_placeholder(recover_info_id)
     else:
         assert False, 'Invalid store type'
     return recover_info

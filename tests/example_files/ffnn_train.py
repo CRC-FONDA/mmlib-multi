@@ -9,9 +9,11 @@ from mmlib.util.init_from_file import create_object
 DATA = 'data'
 DATALOADER = 'dataloader'
 OPTIMIZER = 'optimizer'
+DEVICE = 'cpu'
 
 
 class FFNNTrainService(TrainService):
+
     def train(self, model: torch.nn.Module, number_epochs=None):
 
         set_deterministic()
@@ -28,13 +30,14 @@ class FFNNTrainService(TrainService):
 
         for epoch in range(number_epochs):
             # iterate over data
-            for idx, (_input, _label) in enumerate(dataloader):
+            for data in dataloader:
+                _input, _label = data[0].float(), torch.reshape(data[1], (data[1].shape[0], 1)).float()
                 # reset the gradient in the optimizer
                 optimizer.zero_grad()
                 # let the model make a prediction in the given data
                 predicted_label = model(_input)
                 # calculate the loss using the ground truth
-                loss = torch.nn.MSELoss(predicted_label, _label)
+                loss = torch.nn.MSELoss()(predicted_label, _label)
                 # backpropagation
                 loss.backward()
                 # adjust the model parameters
@@ -62,7 +65,6 @@ class FFNNTrainWrapper(StateDictRestorableObjectWrapper):
         optimizer = RestorableObjectWrapper.load(
             self.state_objs[OPTIMIZER], file_pers_service, dict_pers_service, restore_root, True, True)
         state_dict[OPTIMIZER] = optimizer
-        optimizer.restore_instance()
 
         data_wrapper = RestorableObjectWrapper.load(
             self.state_objs[DATA], file_pers_service, dict_pers_service, restore_root, True, True)

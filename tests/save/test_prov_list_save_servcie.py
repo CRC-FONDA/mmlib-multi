@@ -11,7 +11,7 @@ from mmlib.schema.restorable_object import RestorableObjectWrapper
 from mmlib.schema.save_info_builder import ModelSaveInfoBuilder
 from mmlib.track_env import track_current_environment
 from mmlib.util.dummy_data import imagenet_input
-from tests.example_files.battery_data import BatteryData
+from tests.example_files.battery_data import BatteryData, collate_batch
 from tests.example_files.battery_dataloader import BatteryDataloader
 from tests.example_files.ffnn_train import FFNNTrainWrapper, FFNNTrainService
 from tests.example_files.imagenet_train import ImagenetTrainService, OPTIMIZER, DATALOADER, DATA, ImagenetTrainWrapper
@@ -108,10 +108,11 @@ class TestProvListSaveService(TestModelListSaveService):
 
         train_info = TrainSaveInfo(
             train_service_wrapper=_prov_train_service_wrapper,
-            train_kwargs={'number_epochs': 10}
+            # FIXME maybe up to 2 or three; 10 takes too long
+            train_kwargs={'number_epochs': 1}
         )
 
-        # TODO use builder here
+        # FIXME TODO use builder here
         save_info = ProvListModelSaveInfo()
         save_info.derived_from = model_list_id
         save_info.environment = env
@@ -119,6 +120,9 @@ class TestProvListSaveService(TestModelListSaveService):
         save_info.train_info = train_info
 
         model_id = self.save_service.save_models(save_info)
+
+        recovered_model_info = self.save_service.recover_models(model_id, execute_checks=True)
+        recovered_models_1 = recovered_model_info.models
 
         ###################################
         ###################################
