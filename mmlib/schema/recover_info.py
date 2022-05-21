@@ -396,10 +396,20 @@ class ListProvenanceRecoverInfo(AbstractProvenanceRecoverInfo):
 
         dataset_ids = restored_dict[DATASETS]
 
+        self.datasets = dataset_ids
         # FIXME just for now load the first dataset to correctly load TrainInfo,
         # actually we have to load all datasets here
-        self.datasets = _recover_data(dataset_ids[0], dict_pers_service, file_pers_service, load_files, load_recursive,
-                                      restore_root)
+        self._load_for_dataset_index(dict_pers_service, file_pers_service, load_files, load_recursive,
+                                     restore_root, 0, restored_dict)
+
+    def _load_for_dataset_index(self, dict_pers_service, file_pers_service, load_files, load_recursive,
+                                restore_root, dataset_index, restored_dict=None):
+
+        if restored_dict is None:
+            restored_dict = dict_pers_service.recover_dict(self.store_id, RECOVER_INFO)
+
+        _recover_data(self.datasets[dataset_index], dict_pers_service, file_pers_service, load_files, load_recursive,
+                      restore_root)
 
         self.train_info = _restore_train_info(
             dict_pers_service, file_pers_service, restore_root, restored_dict, load_recursive, load_files)
@@ -416,6 +426,11 @@ class ListProvenanceRecoverInfo(AbstractProvenanceRecoverInfo):
             size_sum += dataset_size_info[METADATA_SIZE]
 
         size_dict[DATASETS] = size_sum
+
+    def adjust_for_dataset(self, dict_pers_service, file_pers_service, load_files, load_recursive,
+                                restore_root, dataset_index):
+        self._load_for_dataset_index(dict_pers_service, file_pers_service, load_files, load_recursive,
+                                restore_root, dataset_index, restored_dict=None)
 
 
 def _recover_compressed_parameters(file_pers_service, load_files, restore_root, restored_dict):

@@ -1,6 +1,7 @@
 import abc
 import math
 import os
+import shutil
 import tempfile
 import warnings
 
@@ -975,10 +976,21 @@ class ProvModelListSaveService(CompressedModelListSaveService):
 
                 # from here on crash guaranteed because not adjusted
                 recover_info: ListProvenanceRecoverInfo = model_info.recover_info
-                train_service = recover_info.train_info.train_service_wrapper.instance
-                train_kwargs = recover_info.train_info.train_kwargs
-                # FIXME train all models, not only index 0
-                train_service.train(base_models[0], **train_kwargs)
-                # after training the base models are the recovered models
+
+                # adjust the Train info to use the right dataset
+                for idx in range(len(recover_info.datasets)):
+                    # FIXME make sure directory is empty
+                    shutil.rmtree(restore_dir)
+                    os.mkdir(restore_dir)
+
+                    recover_info.adjust_for_dataset(self._dict_pers_service, self._file_pers_service, True, True,
+                                                    restore_dir, idx)
+
+                    train_service = recover_info.train_info.train_service_wrapper.instance
+                    train_kwargs = recover_info.train_info.train_kwargs
+                    # FIXME train all models, not only index 0
+                    train_service.train(base_models[idx], **train_kwargs)
+                    # after training the base models are the recovered models
+
                 result = RestoredModelListInfo(models=base_models)
         return result
