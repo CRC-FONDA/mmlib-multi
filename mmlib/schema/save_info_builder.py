@@ -1,7 +1,7 @@
 import torch
 
 from mmlib.save_info import SingleModelSaveInfo, TrainSaveInfo, ProvSingleModelSaveInfo, ModelListSaveInfo, \
-    ModelSaveInfo
+    ModelSaveInfo, ProvListModelSaveInfo
 from mmlib.schema.environment import Environment
 from mmlib.schema.restorable_object import StateDictRestorableObjectWrapper
 
@@ -16,12 +16,35 @@ class ModelSaveInfoBuilder:
         self._model_list = None
         self._code = None
         self._prov_raw_data = None
+        self._prov_datasets_paths = None
         self._env = None
         self._prov_train_kwargs = None
         self._prov_train_service_wrapper = None
 
         self.general_model_info_added = False
         self.prov_model_info_added = False
+
+    def add_train_info(self, train_service_wrapper, train_kwargs):
+        self._prov_train_kwargs = train_kwargs
+        self._prov_train_service_wrapper = train_service_wrapper
+
+    def add_prov_list_info(self, derived_from, environment, dataset_paths):
+        self._derived_from = derived_from
+        self._env = environment
+        self._prov_datasets_paths = dataset_paths
+
+    def build_prov_list_model_save_info(self) -> ProvListModelSaveInfo:
+        save_info = ProvListModelSaveInfo()
+        save_info.derived_from = self._derived_from
+        save_info.environment = self._env
+        save_info.dataset_paths = self._prov_datasets_paths
+        train_info = TrainSaveInfo(
+            train_service_wrapper=self._prov_train_service_wrapper,
+            train_kwargs=self._prov_train_kwargs
+        )
+        save_info.train_info = train_info
+
+        return save_info
 
     def add_model_info(self, env: Environment, model: torch.nn.Module = None, code: str = None,
                        base_model_id: str = None, model_list: [torch.nn.Module] = None, _derived_from=None):

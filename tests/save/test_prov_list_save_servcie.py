@@ -6,15 +6,14 @@ from mmlib.constants import CURRENT_DATA_ROOT, MMLIB_CONFIG
 from mmlib.deterministic import set_deterministic
 from mmlib.equal import model_equal
 from mmlib.save import ProvModelListSaveService
-from mmlib.save_info import ModelListSaveInfo, ProvListModelSaveInfo, TrainSaveInfo
+from mmlib.save_info import ModelListSaveInfo
 from mmlib.schema.restorable_object import RestorableObjectWrapper
 from mmlib.schema.save_info_builder import ModelSaveInfoBuilder
 from mmlib.track_env import track_current_environment
-from mmlib.util.dummy_data import imagenet_input
-from tests.example_files.battery_data import BatteryData, collate_batch
+from tests.example_files.battery_data import BatteryData
 from tests.example_files.battery_dataloader import BatteryDataloader
 from tests.example_files.ffnn_train import FFNNTrainWrapper, FFNNTrainService
-from tests.example_files.imagenet_train import ImagenetTrainService, OPTIMIZER, DATALOADER, DATA, ImagenetTrainWrapper
+from tests.example_files.imagenet_train import OPTIMIZER, DATALOADER, DATA
 from tests.example_files.mynets.ffnn import FFNN
 from tests.save.test_model_list_save_servcie import TestModelListSaveService, dummy_ffnn_input
 
@@ -106,18 +105,14 @@ class TestProvListSaveService(TestModelListSaveService):
 
         _prov_train_service_wrapper = FFNNTrainWrapper(instance=ffnn_ts)
 
-        train_info = TrainSaveInfo(
+        info_builder = ModelSaveInfoBuilder()
+        info_builder.add_train_info(
             train_service_wrapper=_prov_train_service_wrapper,
-            # FIXME maybe up to 2 or three; 10 takes too long
-            train_kwargs={'number_epochs': 1}
+            train_kwargs={'number_epochs': 2}
         )
+        info_builder.add_prov_list_info(derived_from=model_list_id, environment=env, dataset_paths=dataset_paths)
 
-        # FIXME TODO use builder here
-        save_info = ProvListModelSaveInfo()
-        save_info.derived_from = model_list_id
-        save_info.environment = env
-        save_info.dataset_paths = dataset_paths
-        save_info.train_info = train_info
+        save_info = info_builder.build_prov_list_model_save_info()
 
         model_id = self.save_service.save_models(save_info)
 
