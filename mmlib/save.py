@@ -12,6 +12,7 @@ from mmlib.equal import tensor_equal
 from mmlib.persistence import FilePersistenceService, DictPersistenceService
 from mmlib.save_info import SingleModelSaveInfo, ProvSingleModelSaveInfo, ModelListSaveInfo
 from mmlib.schema.dataset import Dataset
+from mmlib.schema.dataset_reference import DatasetReference
 from mmlib.schema.file_reference import FileReference
 from mmlib.schema.model_info import ModelInfo, MODEL_INFO
 from mmlib.schema.model_list_info import ModelListInfo
@@ -935,7 +936,7 @@ class ProvModelListSaveService(CompressedModelListSaveService):
             instance=save_info.train_info.train_service
         )
 
-        datasets = [Dataset(FileReference(path=dataset_path)) for dataset_path in save_info.dataset_paths]
+        datasets = [DatasetReference(data_path=dataset_path) for dataset_path in save_info.dataset_paths]
 
         train_info = TrainInfo(
             ts_wrapper=train_service_wrapper,

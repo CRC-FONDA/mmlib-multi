@@ -150,3 +150,4 @@ dist/
 /tests/example_files/data/reduced-custom-coco-data.zip
 /mmlib/examples/filesystem-tmp/
 /tests/example_files/local-config.ini
+/tmp-dir/

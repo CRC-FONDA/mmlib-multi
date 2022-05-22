@@ -57,11 +57,6 @@ class TestProvListSaveService(TestModelListSaveService):
         for recovered_model, model in zip(restored_model_list_info.models, initial_model_list):
             self.assertTrue(model_equal(model, recovered_model, dummy_ffnn_input))
 
-        ###################################
-        ###################################
-        ###################################
-        ###################################
-
         # set deterministic for debugging purposes
         set_deterministic()
 

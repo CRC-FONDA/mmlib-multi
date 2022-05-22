@@ -5,6 +5,7 @@ import os
 from mmlib.constants import MMLIB_CONFIG, CURRENT_DATA_ROOT, VALUES
 from mmlib.persistence import FilePersistenceService, DictPersistenceService
 from mmlib.schema.dataset import Dataset
+from mmlib.schema.dataset_reference import DatasetReference
 from mmlib.schema.environment import Environment
 from mmlib.schema.file_reference import FileReference
 from mmlib.schema.schema_obj import SchemaObj, METADATA_SIZE
@@ -375,7 +376,7 @@ class CompressedModelListRecoverInfo(AbstractListRecoverInfo):
 
 class ListProvenanceRecoverInfo(AbstractProvenanceRecoverInfo):
 
-    def __init__(self, datasets: [Dataset] = None, train_info: TrainInfo = None, environment: Environment = None,
+    def __init__(self, datasets: [DatasetReference] = None, train_info: TrainInfo = None, environment: Environment = None,
                  store_id: str = None):
         super().__init__(train_info, environment, store_id)
         self.datasets = datasets
@@ -394,11 +395,9 @@ class ListProvenanceRecoverInfo(AbstractProvenanceRecoverInfo):
                         load_recursive: bool = True, load_files: bool = True):
         restored_dict = dict_pers_service.recover_dict(self.store_id, RECOVER_INFO)
 
-        dataset_ids = restored_dict[DATASETS]
-
-        self.datasets = dataset_ids
-        # FIXME just for now load the first dataset to correctly load TrainInfo,
-        # actually we have to load all datasets here
+        self.datasets = \
+            [DatasetReference.load(_id, file_pers_service, dict_pers_service, restore_root, load_recursive, load_files)
+             for _id in restored_dict[DATASETS]]
         self._load_for_dataset_index(dict_pers_service, file_pers_service, load_files, load_recursive,
                                      restore_root, 0, restored_dict)
 
@@ -408,8 +407,7 @@ class ListProvenanceRecoverInfo(AbstractProvenanceRecoverInfo):
         if restored_dict is None:
             restored_dict = dict_pers_service.recover_dict(self.store_id, RECOVER_INFO)
 
-        _recover_data(self.datasets[dataset_index], dict_pers_service, file_pers_service, load_files, load_recursive,
-                      restore_root)
+        _copy_data_to_data_root(self.datasets[dataset_index])
 
         self.train_info = _restore_train_info(
             dict_pers_service, file_pers_service, restore_root, restored_dict, load_recursive, load_files)
@@ -428,9 +426,15 @@ class ListProvenanceRecoverInfo(AbstractProvenanceRecoverInfo):
         size_dict[DATASETS] = size_sum
 
     def adjust_for_dataset(self, dict_pers_service, file_pers_service, load_files, load_recursive,
-                                restore_root, dataset_index):
+                           restore_root, dataset_index):
         self._load_for_dataset_index(dict_pers_service, file_pers_service, load_files, load_recursive,
-                                restore_root, dataset_index, restored_dict=None)
+                                     restore_root, dataset_index, restored_dict=None)
+
+
+def _copy_data_to_data_root(dataset_ref: DatasetReference):
+    data_dst_path = _data_dst_path()
+    clean(data_dst_path)
+    copy_all_data(dataset_ref.data_path, data_dst_path)
 
 
 def _recover_compressed_parameters(file_pers_service, load_files, restore_root, restored_dict):
