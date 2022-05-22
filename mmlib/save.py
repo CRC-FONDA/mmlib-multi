@@ -979,7 +979,7 @@ class ProvModelListSaveService(CompressedModelListSaveService):
 
                 # adjust the Train info to use the right dataset
                 for idx in range(len(recover_info.datasets)):
-                    # FIXME make sure directory is empty
+                    # make sure directory is empty
                     shutil.rmtree(restore_dir)
                     os.mkdir(restore_dir)
 
@@ -988,7 +988,6 @@ class ProvModelListSaveService(CompressedModelListSaveService):
 
                     train_service = recover_info.train_info.train_service_wrapper.instance
                     train_kwargs = recover_info.train_info.train_kwargs
-                    # FIXME train all models, not only index 0
                     train_service.train(base_models[idx], **train_kwargs)
                     # after training the base models are the recovered models
 

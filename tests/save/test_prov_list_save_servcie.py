@@ -61,8 +61,6 @@ class TestProvListSaveService(TestModelListSaveService):
         ###################################
         ###################################
         ###################################
-        # TODO change this
-        updated_model_list = initial_model_list
 
         # set deterministic for debugging purposes
         set_deterministic()
@@ -93,7 +91,7 @@ class TestProvListSaveService(TestModelListSaveService):
         )
 
         optimizer_kwargs = {'lr': 10 ** -7}
-        optimizer = torch.optim.SGD(updated_model_list[0].parameters(), **optimizer_kwargs)
+        optimizer = torch.optim.SGD(initial_model_list[0].parameters(), **optimizer_kwargs)
         state_dict[OPTIMIZER] = RestorableObjectWrapper(
             import_cmd='from torch.optim import SGD',
             init_args=optimizer_kwargs,
@@ -104,11 +102,11 @@ class TestProvListSaveService(TestModelListSaveService):
         ffnn_ts.state_objs = state_dict
 
         _prov_train_service_wrapper = FFNNTrainWrapper(instance=ffnn_ts)
-
+        train_kwargs = {'number_epochs': 2}
         info_builder = ModelSaveInfoBuilder()
         info_builder.add_train_info(
             train_service_wrapper=_prov_train_service_wrapper,
-            train_kwargs={'number_epochs': 2}
+            train_kwargs=train_kwargs
         )
         info_builder.add_prov_list_info(derived_from=model_list_id, environment=env, dataset_paths=dataset_paths)
 
@@ -117,7 +115,12 @@ class TestProvListSaveService(TestModelListSaveService):
         model_id = self.save_service.save_models(save_info)
 
         recovered_model_info = self.save_service.recover_models(model_id, execute_checks=True)
-        recovered_models_1 = recovered_model_info.models
+
+        ffnn_ts.train(initial_model_list[0], **train_kwargs)
+        trained_model = initial_model_list[0]
+        recovered_model = recovered_model_info.models[0]
+
+        self.assertTrue(model_equal(trained_model, recovered_model, dummy_ffnn_input))
 
         ###################################
         ###################################
