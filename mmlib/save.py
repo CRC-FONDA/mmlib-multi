@@ -615,7 +615,7 @@ class AbstractModelListSaveService(BaselineSaveService):
 
 class FullModelListSaveService(AbstractModelListSaveService):
     def save_models(self, save_info: ModelListSaveInfo):
-        super().save_model(model_save_info=save_info)
+        super().save_models(model_save_info=save_info)
         models_id = self._save_full_models(save_info)
 
         return models_id

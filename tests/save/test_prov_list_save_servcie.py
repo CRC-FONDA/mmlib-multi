@@ -72,33 +72,9 @@ class TestProvListSaveService(TestModelListSaveService):
         ]
 
         ffnn_ts = FFNNTrainService()
-
-        state_dict = {}
-
-        # just start with the first data root
-        data_wrapper = BatteryData(root=dataset_paths[0])
-        state_dict[DATA] = RestorableObjectWrapper(
-            config_args={'root': CURRENT_DATA_ROOT},
-            instance=data_wrapper
-        )
-
-        data_loader_kwargs = {'batch_size': 16, 'num_workers': 0, 'pin_memory': True}
-        dataloader = BatteryDataloader(data_wrapper, **data_loader_kwargs)
-        state_dict[DATALOADER] = RestorableObjectWrapper(
-            init_args=data_loader_kwargs,
-            init_ref_type_args=['dataset'],
-            instance=dataloader
-        )
-
-        optimizer_kwargs = {'lr': 10 ** -7}
-        optimizer = torch.optim.SGD(initial_model_list[0].parameters(), **optimizer_kwargs)
-        state_dict[OPTIMIZER] = RestorableObjectWrapper(
-            import_cmd='from torch.optim import SGD',
-            init_args=optimizer_kwargs,
-            init_ref_type_args=['params'],
-            instance=optimizer
-        )
-
+        dataset_path = dataset_paths[0]
+        current_model = initial_model_list[0]
+        state_dict = self._create_ts_state_dict(current_model, dataset_path)
         ffnn_ts.state_objs = state_dict
 
         _prov_train_service_wrapper = FFNNTrainWrapper(instance=ffnn_ts)
@@ -116,116 +92,49 @@ class TestProvListSaveService(TestModelListSaveService):
 
         recovered_model_info = self.save_service.recover_models(model_id, execute_checks=True)
 
+        # check for index 0
         ffnn_ts.train(initial_model_list[0], **train_kwargs)
         trained_model = initial_model_list[0]
         recovered_model = recovered_model_info.models[0]
-
         self.assertTrue(model_equal(trained_model, recovered_model, dummy_ffnn_input))
 
-        ###################################
-        ###################################
-        ###################################
-        ###################################
+        # check for other indexes (update of save service required)
+        for i in range(len(initial_model_list)-1):
+            ffnn_ts = FFNNTrainService()
+            dataset_path = dataset_paths[i+1]
+            current_model = initial_model_list[i+1]
+            state_dict = self._create_ts_state_dict(current_model, dataset_path)
+            ffnn_ts.state_objs = state_dict
 
-        # # TODO define model and dataset, generate info per model and corresponding dataset
-        # model = initial_model_list[0]
-        #
-        # ################################################################################################################
-        # # as next we define the provenance data, that can not be automatically inferred
-        # # All this information has to be only once, for every future version the same prov data can be used
-        # # exceptions are the train_kwargs and the raw_data
-        # ################################################################################################################
-        # # we also have to track the current environment, to store it later
-        # prov_env = track_current_environment()
-        # # as a last step we have to define the data that should be used and how the train method should be parametrized
-        # # TODO think about how to handle training data
-        # data_root = os.path.join(FILE_PATH, '../example_files/data/battery_data_root')
-        #
-        # train_kwargs = {'number_epochs': 10}
-        #
-        # # to train the model we use the imagenet train service specified above
-        # # TODO define own FFNN car battery train service
-        # ffnn_ts = ImagenetTrainService()
-        # # to make the train service work we have to initialize its state dict containing objects that are required for
-        # # training, for example: optimizer and dataloader. The objects in the state dict have to be of type
-        # # RestorableObjectWrapper so that the hold instances and their state can be stored and restored
-        #
-        # # set deterministic for debugging purposes
-        # set_deterministic()
-        #
-        # state_dict = {}
-        #
-        # # before we can define the data loader, we have to define the data wrapper
-        # # for this test case we will use the data from our custom coco dataset
-        # data_wrapper = BatteryData(root=data_root)
-        # state_dict[DATA] = RestorableObjectWrapper(
-        #     config_args={'root': CURRENT_DATA_ROOT},
-        #     instance=data_wrapper
-        # )
-        #
-        # # as a dataloader we use the standard implementation provided by pyTorch
-        # # this is why we instead of specifying the code path, we specify an import cmd
-        # # also we to track all arguments that have been used for initialization of this objects
-        # data_loader_kwargs = {'batch_size': 16, 'num_workers': 0, 'pin_memory': True}
-        # dataloader = BatteryDataloader(data_wrapper, **data_loader_kwargs)
-        # state_dict[DATALOADER] = RestorableObjectWrapper(
-        #     init_args=data_loader_kwargs,
-        #     init_ref_type_args=['dataset'],
-        #     instance=dataloader
-        # )
-        #
-        # # while the other objects do not have an internal state (other than the basic parameters) an optimizer can have
-        # # some more extensive state. In pyTorch it offers also the method .state_dict(). To store and restore we use an
-        # # Optimizer wrapper object.
-        # optimizer_kwargs = {'lr': 10 ** -7}
-        # optimizer = torch.optim.SGD(model.parameters(), **optimizer_kwargs)
-        # state_dict[OPTIMIZER] = RestorableObjectWrapper(
-        #     import_cmd='from torch.utils.data import DataLoader',
-        #     init_args=optimizer_kwargs,
-        #     init_ref_type_args=['params'],
-        #     instance=optimizer
-        # )
-        #
-        # # having created all the objects needed for imagenet training we can plug the state dict into the train servcie
-        # ffnn_ts.state_objs = state_dict
-        #
-        # # finally we wrap the train service in the corresponding wrapper
-        # ts_wrapper = ImagenetTrainWrapper(instance=ffnn_ts)
-        # ################################################################################################################
-        # # having specified all the provenance information that will be used to train a model, we can store it
-        # ################################################################################################################
-        # save_info_builder = ModelSaveInfoBuilder()
-        # save_info_builder.add_model_info(base_model_id=base_model_id, env=prov_env)
-        # save_info_builder.add_prov_data(
-        #     raw_data_path=raw_data, train_kwargs=train_kwargs, train_service_wrapper=ts_wrapper)
-        # save_info = save_info_builder.build()
-        #
-        # ################################################################################################################
-        # # restoring this model will result in a model that was trained according to the given provenance data
-        # # in this case it should be equivalent to the initial model trained using the specified train_service using the
-        # # specified data and train kwargs
-        # ################################################################################################################
-        # model_id = self.save_service.save_model(save_info)
-        #
-        # ffnn_ts.train(model, **train_kwargs)
-        # self.save_service.add_weights_hash_info(model_id, model)
-        # recovered_model_info = self.save_service.recover_model(model_id, execute_checks=True)
-        # recovered_model_1 = recovered_model_info.model
-        #
-        # ################################################################################################################
-        # # Having defined the provenance information above storing a second version is a lot shorter
-        # ################################################################################################################
-        # save_info_builder = ModelSaveInfoBuilder()
-        # save_info_builder.add_model_info(base_model_id=model_id, env=prov_env)
-        # save_info_builder.add_prov_data(raw_data_path=raw_data, train_kwargs=train_kwargs,
-        #                                 train_service_wrapper=ts_wrapper)
-        # save_info = save_info_builder.build()
-        #
-        # model_id_2 = self.save_service.save_model(save_info)
-        #
-        # ffnn_ts.train(model, **train_kwargs)
-        # self.save_service.add_weights_hash_info(model_id_2, model)
-        #
-        # recovered_model_info = self.save_service.recover_model(model_id_2, execute_checks=True)
-        # self.assertTrue(model_equal(model, recovered_model_info.model, imagenet_input))
-        # self.assertFalse(model_equal(recovered_model_1, recovered_model_info.model, imagenet_input))
+            ffnn_ts.train(initial_model_list[i+1], **train_kwargs)
+            trained_model = initial_model_list[i+1]
+            recovered_model = recovered_model_info.models[i+1]
+            self.assertTrue(model_equal(trained_model, recovered_model, dummy_ffnn_input))
+
+
+
+
+    def _create_ts_state_dict(self, current_model, dataset_path):
+        state_dict = {}
+        # just start with the first data root
+        data_wrapper = BatteryData(root=dataset_path)
+        state_dict[DATA] = RestorableObjectWrapper(
+            config_args={'root': CURRENT_DATA_ROOT},
+            instance=data_wrapper
+        )
+        data_loader_kwargs = {'batch_size': 16, 'num_workers': 0, 'pin_memory': True}
+        dataloader = BatteryDataloader(data_wrapper, **data_loader_kwargs)
+        state_dict[DATALOADER] = RestorableObjectWrapper(
+            init_args=data_loader_kwargs,
+            init_ref_type_args=['dataset'],
+            instance=dataloader
+        )
+        optimizer_kwargs = {'lr': 10 ** -7}
+        optimizer = torch.optim.SGD(current_model.parameters(), **optimizer_kwargs)
+        state_dict[OPTIMIZER] = RestorableObjectWrapper(
+            import_cmd='from torch.optim import SGD',
+            init_args=optimizer_kwargs,
+            init_ref_type_args=['params'],
+            instance=optimizer
+        )
+        return state_dict
