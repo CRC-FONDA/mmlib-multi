@@ -151,3 +151,8 @@ dist/
 /mmlib/examples/filesystem-tmp/
 /tests/example_files/local-config.ini
 /tmp-dir/
+/tests/example_files/data/dummy_battery_data/data_set_1.zip
+/tests/example_files/data/dummy_battery_data/data_set_2.zip
+/tests/example_files/data/dummy_battery_data/data_set_3.zip
+.DS_Store
+/tests/size/filesystem-tmp/

@@ -419,7 +419,7 @@ class ListProvenanceRecoverInfo(AbstractProvenanceRecoverInfo):
         super()._add_reference_sizes(size_dict, file_pers_service, dict_pers_service)
         size_sum = 0
         for dataset in self.datasets:
-            dataset_size_info = self.dataset.size_info(file_pers_service, dict_pers_service)
+            dataset_size_info = dataset.size_info(file_pers_service, dict_pers_service)
             # WARNING here we only consider the size of the metadat and references, not of the underlying data
             size_sum += dataset_size_info[METADATA_SIZE]
 
