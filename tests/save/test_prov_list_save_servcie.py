@@ -92,27 +92,17 @@ class TestProvListSaveService(TestModelListSaveService):
 
         recovered_model_info = self.save_service.recover_models(model_id, execute_checks=True)
 
-        # check for index 0
-        ffnn_ts.train(initial_model_list[0], **train_kwargs)
-        trained_model = initial_model_list[0]
-        recovered_model = recovered_model_info.models[0]
-        self.assertTrue(model_equal(trained_model, recovered_model, dummy_ffnn_input))
-
-        # check for other indexes (update of save service required)
-        for i in range(len(initial_model_list)-1):
+        for i in range(len(initial_model_list)):
             ffnn_ts = FFNNTrainService()
-            dataset_path = dataset_paths[i+1]
-            current_model = initial_model_list[i+1]
+            dataset_path = dataset_paths[i]
+            current_model = initial_model_list[i]
             state_dict = self._create_ts_state_dict(current_model, dataset_path)
             ffnn_ts.state_objs = state_dict
 
-            ffnn_ts.train(initial_model_list[i+1], **train_kwargs)
-            trained_model = initial_model_list[i+1]
-            recovered_model = recovered_model_info.models[i+1]
+            ffnn_ts.train(initial_model_list[i], **train_kwargs)
+            trained_model = initial_model_list[i]
+            recovered_model = recovered_model_info.models[i]
             self.assertTrue(model_equal(trained_model, recovered_model, dummy_ffnn_input))
-
-
-
 
     def _create_ts_state_dict(self, current_model, dataset_path):
         state_dict = {}
