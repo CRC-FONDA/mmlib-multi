@@ -26,6 +26,8 @@ from mmlib.util.helper import log_start, log_stop, torch_dtype_to_numpy_dict, to
 from mmlib.util.init_from_file import create_object, create_type
 from mmlib.util.weight_dict_merkle_tree import WeightDictMerkleTree, THIS, OTHER
 
+SKIP = 'SKIP'
+
 BASELINE = 'baseline'
 PARAM_UPDATE = 'param_update'
 PROVENANCE = 'provenance'
@@ -980,17 +982,19 @@ class ProvModelListSaveService(CompressedModelListSaveService):
 
                 # adjust the Train info to use the right dataset
                 for idx in range(len(recover_info.datasets)):
-                    # make sure directory is empty
-                    shutil.rmtree(restore_dir)
-                    os.mkdir(restore_dir)
+                    # if path starts with 'skip' -> interpret as model was not updated -> skip training
+                    if not recover_info.datasets[idx].data_path.startswith(SKIP):
+                        # make sure directory is empty
+                        shutil.rmtree(restore_dir)
+                        os.mkdir(restore_dir)
 
-                    recover_info.adjust_for_dataset(self._dict_pers_service, self._file_pers_service, True, True,
-                                                    restore_dir, idx)
+                        recover_info.adjust_for_dataset(self._dict_pers_service, self._file_pers_service, True, True,
+                                                        restore_dir, idx)
 
-                    train_service = recover_info.train_info.train_service_wrapper.instance
-                    train_kwargs = recover_info.train_info.train_kwargs
-                    train_service.train(base_models[idx], **train_kwargs)
-                    # after training the base models are the recovered models
+                        train_service = recover_info.train_info.train_service_wrapper.instance
+                        train_kwargs = recover_info.train_info.train_kwargs
+                        train_service.train(base_models[idx], **train_kwargs)
+                        # after training the base models are the recovered models
 
                 result = RestoredModelListInfo(models=base_models)
         return result
