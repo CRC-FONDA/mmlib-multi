@@ -983,7 +983,7 @@ class ProvModelListSaveService(CompressedModelListSaveService):
                 # adjust the Train info to use the right dataset
                 for idx in range(len(recover_info.datasets)):
                     # if 'SKIP' in path -> interpret as model was not updated -> skip training
-                    if SKIP in recover_info.datasets[idx].data_path:
+                    if not SKIP in recover_info.datasets[idx].data_path:
                         # make sure directory is empty
                         shutil.rmtree(restore_dir)
                         os.mkdir(restore_dir)
