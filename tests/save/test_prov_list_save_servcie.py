@@ -1,6 +1,7 @@
 import os
 
 import torch
+from torch.utils.data import DataLoader
 
 from mmlib.constants import CURRENT_DATA_ROOT, MMLIB_CONFIG
 from mmlib.deterministic import set_deterministic
@@ -11,7 +12,6 @@ from mmlib.schema.restorable_object import RestorableObjectWrapper
 from mmlib.schema.save_info_builder import ModelSaveInfoBuilder
 from mmlib.track_env import track_current_environment
 from tests.example_files.battery_data import BatteryData
-from tests.example_files.battery_dataloader import BatteryDataloader
 from tests.example_files.ffnn_train import FFNNTrainWrapper, FFNNTrainService
 from tests.example_files.imagenet_train import OPTIMIZER, DATALOADER, DATA
 from tests.example_files.mynets.ffnn import FFNN
@@ -108,8 +108,9 @@ class TestProvListSaveService(TestModelListSaveService):
             instance=data_wrapper
         )
         data_loader_kwargs = {'batch_size': 16, 'num_workers': 0, 'pin_memory': True}
-        dataloader = BatteryDataloader(data_wrapper, **data_loader_kwargs)
+        dataloader = DataLoader(data_wrapper, **data_loader_kwargs)
         state_dict[DATALOADER] = RestorableObjectWrapper(
+            import_cmd='from torch.utils.data import DataLoader',
             init_args=data_loader_kwargs,
             init_ref_type_args=['dataset'],
             instance=dataloader
