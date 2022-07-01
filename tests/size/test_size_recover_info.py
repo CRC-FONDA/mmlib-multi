@@ -4,9 +4,10 @@ import tempfile
 import torch
 
 from mmlib.schema.dataset import Dataset, DATASET
+from mmlib.schema.dataset_reference import DatasetReference
 from mmlib.schema.file_reference import FileReference
 from mmlib.schema.recover_info import FullModelRecoverInfo, ENVIRONMENT, MODEL_CODE, PARAMETERS, \
-    WeightsUpdateRecoverInfo, UPDATE, ProvenanceRecoverInfo, TRAIN_INFO
+    WeightsUpdateRecoverInfo, UPDATE, ProvenanceRecoverInfo, TRAIN_INFO, ListProvenanceRecoverInfo, DATASETS
 from mmlib.schema.restorable_object import StateFileRestorableObjectWrapper
 from mmlib.schema.schema_obj import METADATA_SIZE
 from mmlib.schema.train_info import TrainInfo
@@ -120,3 +121,50 @@ class TestRecoverInfoSize(TestSize):
         imagenet_ts.state_objs = state_dict
 
         return ImagenetTrainWrapper(instance=imagenet_ts)
+
+    def test_full_model_list_size(self):
+        with tempfile.TemporaryDirectory() as tmp_path:
+            model = resnet18(pretrained=True)
+            param_path = os.path.join(tmp_path, 'params')
+            torch.save(model.state_dict(), param_path)
+            environment = track_current_environment()
+            recover_info = FullModelRecoverInfo(
+                parameters_file=FileReference(param_path),
+                model_code=FileReference(os.path.join(FILE_PATH, '../example_files/mynets/resnet18.py')),
+                environment=environment)
+            _id = recover_info.persist(self.file_pers_service, self.dict_pers_service)
+
+        place_holder = FullModelRecoverInfo.load_placeholder(_id)
+        size_dict = place_holder.size_info(self.file_pers_service, self.dict_pers_service)
+
+        # raw data number from mac finder info
+        self.assertTrue(METADATA_SIZE in size_dict.keys())
+        # we expect four fields: metadata, environment, model code, model parameters
+        self.assertEqual(4, len(size_dict.keys()))
+        self.assertTrue(size_dict[METADATA_SIZE] > 0)
+        self.assertTrue(size_dict[ENVIRONMENT][METADATA_SIZE] > 0)
+        self.assertTrue(size_dict[MODEL_CODE] > 0)
+        self.assertTrue(size_dict[PARAMETERS] > size_dict[MODEL_CODE])
+
+    def test_provenance_list_size(self):
+        data_sets = [DatasetReference(COCO_DATA), DatasetReference(COCO_DATA), DatasetReference(COCO_DATA)]
+        environment = track_current_environment()
+        train_info = self._dummy_train_service()
+        recover_info = ListProvenanceRecoverInfo(
+            datasets=data_sets,
+            environment=environment,
+            train_info=train_info
+        )
+        _id = recover_info.persist(self.file_pers_service, self.dict_pers_service)
+
+        place_holder = ListProvenanceRecoverInfo.load_placeholder(_id)
+        size_dict = place_holder.size_info(self.file_pers_service, self.dict_pers_service)
+
+        # raw data number from mac finder info
+        self.assertTrue(METADATA_SIZE in size_dict.keys())
+        # we expect four fields: metadata, dataset, train info, environment
+        self.assertEqual(4, len(size_dict.keys()))
+        self.assertTrue(size_dict[METADATA_SIZE] > 0)
+        self.assertTrue(size_dict[ENVIRONMENT][METADATA_SIZE] > 0)
+        self.assertTrue(size_dict[DATASETS] > 0)
+        self.assertTrue(size_dict[TRAIN_INFO][METADATA_SIZE] > 0)

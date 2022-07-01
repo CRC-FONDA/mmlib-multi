@@ -6,6 +6,7 @@ import time
 import uuid
 from zipfile import ZipFile
 
+import numpy as np
 import torch
 from colorama import Fore, Style
 
@@ -117,3 +118,49 @@ def log_stop(logging, log_dict):
         log_dict[TIME] = t
 
         print(json.dumps(log_dict))
+
+
+def to_byte_tensor(_xor_diff):
+    # represent each byte as an integer form 0 - 255
+    int_values = [x for x in _xor_diff]
+    # form a byte tensor and reshape it to the original shape
+    bt = torch.ByteTensor(int_values)
+    return bt
+
+
+def to_tensor(b: bytes, dt, single_value=False):
+    dt = dt.newbyteorder('<')
+    np_array = np.frombuffer(b, dtype=dt)
+    if single_value:
+        return torch.tensor(np_array[0])
+    else:
+        return torch.tensor(np.array(np_array))
+
+
+numpy_to_torch_dtype_dict = {
+    np.bool: torch.bool,
+    np.uint8: torch.uint8,
+    np.int8: torch.int8,
+    np.int16: torch.int16,
+    np.int32: torch.int32,
+    np.int64: torch.int64,
+    np.float16: torch.float16,
+    np.float32: torch.float32,
+    np.float64: torch.float64,
+    np.complex64: torch.complex64,
+    np.complex128: torch.complex128
+}
+
+torch_dtype_to_numpy_dict = {
+    torch.bool: np.bool,
+    torch.uint8: np.uint8,
+    torch.int8: np.int8,
+    torch.int16: np.int16,
+    torch.int32: np.int32,
+    torch.int64: np.int64,
+    torch.float16: np.float16,
+    torch.float32: np.float32,
+    torch.float64: np.float64,
+    torch.complex64: np.complex64,
+    torch.complex128: np.complex128
+}

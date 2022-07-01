@@ -2,8 +2,10 @@ import os
 import shutil
 import unittest
 
+from mmlib.constants import MMLIB_CONFIG
 from mmlib.persistence import FileSystemPersistenceService, MongoDictPersistenceService
 from mmlib.util.mongo import MongoService
+from tests.save.test_prov_list_save_servcie import CONFIG
 
 COCO_DATA = '../example_files/data/reduced-custom-coco-data'
 
@@ -26,6 +28,8 @@ class TestSize(unittest.TestCase):
         os.mkdir(self.abs_tmp_path)
         self.file_pers_service = FileSystemPersistenceService(self.tmp_path)
         self.dict_pers_service = MongoDictPersistenceService()
+
+        os.environ[MMLIB_CONFIG] = CONFIG
 
     def tearDown(self) -> None:
         self.__clean_up()

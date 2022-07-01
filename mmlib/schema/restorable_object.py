@@ -32,6 +32,11 @@ class RestoredModelInfo:
         self.model = model
 
 
+class RestoredModelListInfo:
+    def __init__(self, models: [torch.nn.Module]):
+        self.models = models
+
+
 class AbstractRestorableObjectWrapper(SchemaObj, metaclass=ABCMeta):
 
     def __init__(self, c_name: str, code: FileReference, import_cmd: str = None, instance: object = None,

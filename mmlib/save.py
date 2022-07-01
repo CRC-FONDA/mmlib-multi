@@ -1,41 +1,50 @@
 import abc
+import math
 import os
+import shutil
 import tempfile
 import warnings
 
+import numpy as np
 import torch
 
 from mmlib.equal import tensor_equal
 from mmlib.persistence import FilePersistenceService, DictPersistenceService
-from mmlib.save_info import ModelSaveInfo, ProvModelSaveInfo
+from mmlib.save_info import SingleModelSaveInfo, ProvSingleModelSaveInfo, ModelListSaveInfo
 from mmlib.schema.dataset import Dataset
+from mmlib.schema.dataset_reference import DatasetReference
 from mmlib.schema.file_reference import FileReference
 from mmlib.schema.model_info import ModelInfo, MODEL_INFO
-from mmlib.schema.recover_info import FullModelRecoverInfo, WeightsUpdateRecoverInfo, ProvenanceRecoverInfo
-from mmlib.schema.restorable_object import RestoredModelInfo
-from mmlib.schema.store_type import ModelStoreType
+from mmlib.schema.model_list_info import ModelListInfo
+from mmlib.schema.recover_info import FullModelRecoverInfo, WeightsUpdateRecoverInfo, ProvenanceRecoverInfo, \
+    FullModelListRecoverInfo, CompressedModelListRecoverInfo, ListWeightsUpdateRecoverInfo, ListProvenanceRecoverInfo
+from mmlib.schema.restorable_object import RestoredModelInfo, RestoredModelListInfo
+from mmlib.schema.store_type import ModelStoreType, ModelListStoreType
 from mmlib.schema.train_info import TrainInfo
 from mmlib.track_env import compare_env_to_current
-from mmlib.util.helper import log_start, log_stop
+from mmlib.util.helper import log_start, log_stop, torch_dtype_to_numpy_dict, to_tensor
 from mmlib.util.init_from_file import create_object, create_type
 from mmlib.util.weight_dict_merkle_tree import WeightDictMerkleTree, THIS, OTHER
 
-PROVENANCE = 'provenance'
-
-PARAM_UPDATE = 'param_update'
+SKIP = 'SKIP'
 
 BASELINE = 'baseline'
+PARAM_UPDATE = 'param_update'
+PROVENANCE = 'provenance'
 
 START = 'START'
 STOP = 'STOP'
 
 PICKLED_MODEL_PARAMETERS = 'pickled_model_parameters'
-
 PARAMETERS_PATCH = "parameters_patch"
-
 RESTORE_PATH = 'restore_path'
-
 MODEL_WEIGHTS = 'model_weights.pt'
+PARAMETERS = 'parameters'
+
+COMPRESS_FUNC = 'compress_func'
+DECOMPRESS_FUNC = 'decompress_func'
+COMPRESS_KWARGS = 'compress_kwargs'
+DECOMPRESS_KWARGS = 'decompress_kwargs'
 
 
 # Future work, se if it would make sense to use protocol here
@@ -48,7 +57,7 @@ class AbstractSaveService(metaclass=abc.ABCMeta):
         self.logging = logging
 
     @abc.abstractmethod
-    def save_model(self, model_save_info: ModelSaveInfo) -> str:
+    def save_model(self, model_save_info: SingleModelSaveInfo) -> str:
         """
         Saves a model together with the given metadata.
         :param model_save_info: An instance of ModelSaveInfo providing all the info needed to save the model.
@@ -102,7 +111,7 @@ class BaselineSaveService(AbstractSaveService):
         self._file_pers_service.logging = logging
         self._dict_pers_service.logging = logging
 
-    def save_model(self, model_save_info: ModelSaveInfo) -> str:
+    def save_model(self, model_save_info: SingleModelSaveInfo) -> str:
         log_all = log_start(self.logging, BASELINE, 'call_save_full_model', 'all')
 
         self._check_consistency(model_save_info)
@@ -160,7 +169,7 @@ class BaselineSaveService(AbstractSaveService):
         # the class name of the model
         assert model_save_info.model_class_name, 'model class name is not set'
 
-    def _save_full_model(self, model_save_info: ModelSaveInfo, add_weights_hash_info=True) -> str:
+    def _save_full_model(self, model_save_info: SingleModelSaveInfo, add_weights_hash_info=True) -> str:
         log_all = log_start(self.logging, BASELINE, '_save_full_model', 'all')
 
         with tempfile.TemporaryDirectory() as tmp_path:
@@ -235,15 +244,18 @@ class BaselineSaveService(AbstractSaveService):
 
         return code, class_name
 
-    def _pickle_weights(self, model, save_path):
+    def _pickle_weights(self, model, save_path, model_name=None):
         # store pickle dump of model weights
         state_dict = model.state_dict()
-        weight_path = self._pickle_state_dict(state_dict, save_path)
+        weight_path = self._pickle_state_dict(state_dict, save_path, model_name)
 
         return weight_path
 
-    def _pickle_state_dict(self, state_dict, save_path):
-        weight_path = os.path.join(save_path, MODEL_WEIGHTS)
+    def _pickle_state_dict(self, state_dict, save_path, model_name=None):
+        if model_name:
+            weight_path = os.path.join(save_path, model_name)
+        else:
+            weight_path = os.path.join(save_path, MODEL_WEIGHTS)
         torch.save(state_dict, weight_path)
         return weight_path
 
@@ -296,7 +308,7 @@ class WeightUpdateSaveService(BaselineSaveService):
         super().__init__(file_pers_service, dict_pers_service, logging)
         self.improved_version = improved_version
 
-    def save_model(self, model_save_info: ModelSaveInfo) -> str:
+    def save_model(self, model_save_info: SingleModelSaveInfo) -> str:
 
         # as a first step we have to find out if we have to store a full model first or if we can store only the update
         # if there is no base model given, we can not compute any updates -> we have to sore the full model
@@ -461,9 +473,9 @@ class ProvenanceSaveService(BaselineSaveService):
         """
         super().__init__(file_pers_service, dict_pers_service, logging)
 
-    def save_model(self, model_save_info: ModelSaveInfo) -> str:
+    def save_model(self, model_save_info: SingleModelSaveInfo) -> str:
         log_all = log_start(self.logging, PROVENANCE, '_save_model', 'all')
-        if model_save_info.base_model is None or not isinstance(model_save_info, ProvModelSaveInfo):
+        if model_save_info.base_model is None or not isinstance(model_save_info, ProvSingleModelSaveInfo):
             # if the base model is none or model save info does not provide provenance save info we have to store the
             # model as a full model
             model_id = super().save_model(model_save_info)
@@ -571,9 +583,418 @@ class ProvenanceSaveService(BaselineSaveService):
             raise NotImplementedError
 
 
+class AbstractModelListSaveService(BaselineSaveService):
+    def save_models(self, model_save_info: ModelListSaveInfo):
+        assert self._same_architecture(model_save_info.models), "models in model list have to have same architecture"
+
+    def _same_architecture(self, models):
+        # if only one model in list it has the same architecture
+        if len(models) == 1:
+            return True
+        else:
+            # else check if we find the same tensor shape for all keys
+            first_model_state = models[0].state_dict()
+            for model in models:
+                current_state = model.state_dict()
+                for first_model_key, first_model_tensor in first_model_state.items():
+                    first_shape = first_model_tensor.shape
+
+                    # check if layer exists
+                    if first_model_key not in current_state:
+                        return False
+
+                    # if layer exists check if shape is equal
+                    current_shape = current_state[first_model_key].shape
+                    if not current_shape == first_shape:
+                        return False
+
+            return True
+
+    def _get_store_type(self, model_id: str):
+        with tempfile.TemporaryDirectory() as tmp_path:
+            model_info = ModelListInfo.load(model_id, self._file_pers_service, self._dict_pers_service, tmp_path)
+            return model_info.store_type
+
+
+class FullModelListSaveService(AbstractModelListSaveService):
+    def save_models(self, save_info: ModelListSaveInfo):
+        super().save_models(model_save_info=save_info)
+        models_id = self._save_full_models(save_info)
+
+        return models_id
+
+    def _save_full_models(self, save_info: ModelListSaveInfo):
+        model_list = save_info.models
+
+        with tempfile.TemporaryDirectory() as tmp_path:
+            saved_parameter_paths = []
+            for i, model in enumerate(model_list):
+                model_name = f'model-{i}.pt'
+                param_path = self._pickle_weights(model, tmp_path, model_name)
+                saved_parameter_paths.append(FileReference(path=param_path))
+
+            recover_info = FullModelListRecoverInfo(model_code=FileReference(path=save_info.model_code),
+                                                    model_class_name=save_info.model_class_name,
+                                                    environment=save_info.environment,
+                                                    parameter_files=saved_parameter_paths)
+
+            model_list_info = ModelListInfo(store_type=ModelListStoreType.FULL_MODEL, recover_info=recover_info)
+
+            model_info_id = model_list_info.persist(self._file_pers_service, self._dict_pers_service)
+
+            return model_info_id
+
+    def recover_models(self, model_list_id: str, execute_checks: bool = True) -> RestoredModelListInfo:
+        with tempfile.TemporaryDirectory() as tmp_path:
+            model_info = ModelListInfo.load(model_list_id, self._file_pers_service, self._dict_pers_service, tmp_path,
+                                            load_recursive=True, load_files=True)
+
+            recover_info: FullModelListRecoverInfo = model_info.recover_info
+
+            recovered_models = []
+            for param_file in recover_info.parameter_files:
+                model = create_object(recover_info.model_code.path, recover_info.model_class_name)
+                s_dict = self._recover_pickled_weights(param_file.path)
+                model.load_state_dict(s_dict)
+                recovered_models.append(model)
+
+            return RestoredModelListInfo(models=recovered_models)
+
+
+def _bytes_per_value(_type: torch.dtype):
+    # to be more efficient we can just create/save a lookup table
+    dummy_tensor = torch.tensor([1], dtype=_type)
+    return len(dummy_tensor.numpy().tobytes())
+
+
+class CompressedModelListSaveService(AbstractModelListSaveService):
+
+    def __init__(self, file_pers_service: FilePersistenceService, dict_pers_service: DictPersistenceService,
+                 compression_info: dict = None):
+
+        super().__init__(file_pers_service, dict_pers_service)
+
+        if compression_info:
+            # check if compression_funcs are there
+            assert COMPRESS_FUNC in compression_info, 'no compression method found'
+            assert DECOMPRESS_FUNC in compression_info, 'no decompression method found'
+            assert COMPRESS_KWARGS in compression_info, 'no compression args found'
+            assert DECOMPRESS_KWARGS in compression_info, 'no decompression args found'
+            self.compression_info = compression_info
+        else:
+            self.compression_info = {
+                COMPRESS_FUNC: None,
+                COMPRESS_KWARGS: {},
+                DECOMPRESS_FUNC: None,
+                DECOMPRESS_KWARGS: {}
+            }
+
+    def save_models(self, save_info: ModelListSaveInfo, add_weights_hash_info=False):
+        super().save_models(model_save_info=save_info)
+        model_ids = self._save_compressed_models(save_info, add_weights_hash_info)
+
+        return model_ids
+
+    def model_save_size(self, model_id: str) -> dict:
+        place_holder = ModelListInfo.load_placeholder(model_id)
+        size_dict = place_holder.size_info(self._file_pers_service, self._dict_pers_service)
+
+        return size_dict
+
+    def _write_to_param_file(self, aggregated_parameters, tmp_path):
+
+        compression_method = self.compression_info[COMPRESS_FUNC]
+        compression_kwargs = self.compression_info[COMPRESS_KWARGS]
+
+        # compress bytearray if method given
+        if compression_method:
+            aggregated_parameters = compression_method(aggregated_parameters, **compression_kwargs)
+
+        # save aggregated parameters to binary file -> minimal overhead
+        param_file = FileReference(path=os.path.join(tmp_path, PARAMETERS))
+
+        with open(param_file.path, 'wb') as f:
+            f.write(aggregated_parameters)
+
+        return param_file
+
+    def _save_compressed_models(self, save_info, add_weights_hash_info):
+        model_list = save_info.models
+
+        aggregated_parameters = bytearray()
+        for model in model_list:
+            model_state = model.state_dict()
+            for _, tensor, in model_state.items():
+                aggregated_parameters.extend(tensor.numpy().tobytes())
+
+        with tempfile.TemporaryDirectory() as tmp_path:
+
+            param_file = self._write_to_param_file(aggregated_parameters, tmp_path)
+
+            recover_info = CompressedModelListRecoverInfo(model_code=FileReference(path=save_info.model_code),
+                                                          model_class_name=save_info.model_class_name,
+                                                          environment=save_info.environment,
+                                                          compressed_parameters=param_file)
+
+            models_weights_hash_info = None
+            if add_weights_hash_info:
+                models_weights_hash_info = _generate_merkle_trees(model_list)
+
+            model_list_info = ModelListInfo(store_type=ModelListStoreType.COMPRESSED_PARAMETERS,
+                                            recover_info=recover_info,
+                                            models_weights_hash_info=models_weights_hash_info)
+
+            model_info_id = model_list_info.persist(self._file_pers_service, self._dict_pers_service)
+
+            return model_info_id
+
+    def _load_binary_data(self, path):
+
+        # load raw data from disk and decompress
+        # read binary file
+        with open(path, 'rb') as f:
+            data = f.read()
+
+            decompression_method = self.compression_info[DECOMPRESS_FUNC]
+            decompression_kwargs = self.compression_info[DECOMPRESS_KWARGS]
+
+            if decompression_method:
+                data = decompression_method(data, **decompression_kwargs)
+            return data
+
+    def recover_models(self, model_list_id: str, execute_checks: bool = True) -> RestoredModelListInfo:
+        recovered_models = []
+
+        with tempfile.TemporaryDirectory() as tmp_path:
+            model_info = ModelListInfo.load(model_list_id, self._file_pers_service, self._dict_pers_service,
+                                            tmp_path, load_recursive=True, load_files=True)
+
+            recover_info: CompressedModelListRecoverInfo = model_info.recover_info
+
+            data = self._load_binary_data(recover_info.compressed_parameters.path)
+
+            # position byte array to read form
+            byte_pointer = 0
+            # read until we have no data left
+            while byte_pointer < len(data):
+                # create a copy of the example model and load new weights in it
+                model = create_object(recover_info.model_code.path, recover_info.model_class_name)
+                model_state = model.state_dict()
+                for k, _tensor in model_state.items():
+                    byte_pointer, recovered_tensor = read_tensor_from_bytes(_tensor, byte_pointer, data)
+
+                    # override the recovered tensor in the state dict
+                    model_state[k] = recovered_tensor
+
+                # as soon as state_dict for one model is recovered load it back into model and append it to result
+                model.load_state_dict(model_state)
+                recovered_models.append(model)
+
+            return RestoredModelListInfo(models=recovered_models)
+
+
+def read_tensor_from_bytes(_tensor, byte_pointer, data):
+    # the number of bytes we have to extract is equivalent to:
+    # the number of values the tensor holds * number of bytes for the datatype (for one float 4 bytes)
+    shape = _tensor.shape
+    num_bytes = math.prod(shape) * _bytes_per_value(_tensor.dtype)
+    # read the bytes for the tensor
+    byte_data = data[byte_pointer:byte_pointer + num_bytes]
+    # form tensor out of bytes, and reshape
+    np_dtype = np.dtype(torch_dtype_to_numpy_dict[_tensor.dtype])
+    recovered_tensor = to_tensor(byte_data, np_dtype)
+    recovered_tensor = torch.reshape(recovered_tensor, shape)
+    # update byte pointer to read form correct position
+    byte_pointer += num_bytes
+    return byte_pointer, recovered_tensor
+
+
+class DiffModelListSaveService(CompressedModelListSaveService):
+
+    def __init__(self, file_pers_service: FilePersistenceService, dict_pers_service: DictPersistenceService,
+                 compression_info: dict = None):
+        super().__init__(file_pers_service, dict_pers_service, compression_info)
+
+    def save_models(self, save_info: ModelListSaveInfo, add_weights_hash_info=True):
+        if save_info.derived_from is None:
+            models_id = super().save_models(save_info=save_info, add_weights_hash_info=add_weights_hash_info)
+        else:
+            models_id = self._save_derived_representation(save_info, add_weights_hash_info)
+
+        return models_id
+
+    def _save_derived_representation(self, save_info, add_weights_hash_info):
+        current_model_hash_infos = _generate_merkle_trees(save_info.models)
+        base_model_hash_infos = self._get_base_model_hash_infos(save_info)
+
+        diff_info = []
+        for base_hash_info, current_hash_info in zip(base_model_hash_infos, current_model_hash_infos):
+            diff_info.append(base_hash_info.diff(current_hash_info))
+
+        aggregated_parameters = bytearray()
+        update_list = []
+        for model_diff, model in zip(diff_info, save_info.models):
+            model_state = model.state_dict()
+            changed_keys = list(model_diff[0])
+            update_list.append(changed_keys)
+            for key, tensor, in model_state.items():
+                if key in changed_keys:
+                    aggregated_parameters.extend(tensor.numpy().tobytes())
+
+        with tempfile.TemporaryDirectory() as tmp_path:
+            param_file = self._write_to_param_file(aggregated_parameters, tmp_path)
+
+            recover_info = ListWeightsUpdateRecoverInfo(update=param_file, update_list=update_list)
+
+            model_list_info = ModelListInfo(store_type=ModelListStoreType.COMPRESSED_PARAMETERS_DIFF,
+                                            recover_info=recover_info,
+                                            models_weights_hash_info=current_model_hash_infos,
+                                            derived_from_id=save_info.derived_from)
+
+            model_info_id = model_list_info.persist(self._file_pers_service, self._dict_pers_service)
+
+            return model_info_id
+
+    def _get_base_model_hash_infos(self, save_info):
+        with tempfile.TemporaryDirectory() as tmp_path:
+            base_model_info = ModelListInfo.load(save_info.derived_from, self._file_pers_service,
+                                                 self._dict_pers_service, tmp_path)
+            return base_model_info.models_weights_hash_info
+
+    def recover_models(self, model_list_id: str, execute_checks: bool = True) -> RestoredModelListInfo:
+        store_type = self._get_store_type(model_list_id)
+
+        if store_type == ModelListStoreType.COMPRESSED_PARAMETERS:
+            models = super().recover_models(model_list_id)
+        else:
+            models = self._recover_from_diff(model_list_id, execute_checks)
+
+        return models
+
+    def _recover_from_diff(self, model_list_id, execute_checks):
+        recovered_models = []
+
+        with tempfile.TemporaryDirectory() as tmp_path:
+            model_info = ModelListInfo.load(model_list_id, self._file_pers_service, self._dict_pers_service,
+                                            tmp_path, load_recursive=True, load_files=True)
+
+            recover_info: ListWeightsUpdateRecoverInfo = model_info.recover_info
+
+            # load the base models, so that we can apply the updates to them
+            base_models_info = self.recover_models(model_info.derived_from)
+            base_model_list = base_models_info.models
+
+            data = self._load_binary_data(recover_info.update.path)
+
+            byte_pointer = 0
+            for base_model, updates in zip(base_model_list, recover_info.update_list):
+                updated_state_dict = base_model.state_dict()
+                for layer in updated_state_dict.keys():
+                    if layer in updates:
+                        byte_pointer, recovered_tensor = \
+                            read_tensor_from_bytes(updated_state_dict[layer], byte_pointer, data)
+
+                        # override the recovered tensor in the state dict
+                        updated_state_dict[layer] = recovered_tensor
+
+                # as soon as state_dict for one model is recovered load it back into model and append it to result
+                base_model.load_state_dict(updated_state_dict)
+                recovered_models.append(base_model)
+
+        return RestoredModelListInfo(models=recovered_models)
+
+
+def _generate_merkle_trees(models):
+    return [WeightDictMerkleTree.from_state_dict(model.state_dict()) for model in models]
+
+
 def _get_weights_hash_info(add_weights_hash_info, model_save_info):
     weights_hash_info = None
     if add_weights_hash_info:
         assert model_save_info.model, "to compute a weights info hash the a model has to be given"
         weights_hash_info = WeightDictMerkleTree.from_state_dict(model_save_info.model.state_dict())
     return weights_hash_info
+
+
+class ProvModelListSaveService(CompressedModelListSaveService):
+    def save_models(self, save_info: ModelListSaveInfo, add_weights_hash_info=False):
+        if save_info.derived_from is None:
+            models_id = super().save_models(save_info=save_info, add_weights_hash_info=add_weights_hash_info)
+        else:
+            models_id = self._save_provenance_models(save_info)
+
+        return models_id
+
+    def _save_provenance_models(self, save_info):
+        model_list_info = self._build_prov_model_info(save_info)
+        model_list_info_id = model_list_info.persist(self._file_pers_service, self._dict_pers_service)
+        return model_list_info_id
+
+    def _build_prov_model_info(self, save_info):
+        tw_class_name = save_info.train_info.train_wrapper_class_name
+        tw_code = FileReference(path=save_info.train_info.train_wrapper_code)
+        type_ = create_type(code=tw_code.path, type_name=tw_class_name)
+        train_service_wrapper = type_(
+            instance=save_info.train_info.train_service
+        )
+
+        datasets = [DatasetReference(data_path=dataset_path) for dataset_path in save_info.dataset_paths]
+
+        train_info = TrainInfo(
+            ts_wrapper=train_service_wrapper,
+            ts_wrapper_code=tw_code,
+            ts_wrapper_class_name=tw_class_name,
+            train_kwargs=save_info.train_info.train_kwargs,
+        )
+        prov_recover_info = ListProvenanceRecoverInfo(
+            datasets=datasets,
+            train_info=train_info,
+            environment=save_info.environment
+        )
+
+        derived_from = save_info.derived_from if save_info.derived_from else None
+        model_info = ModelListInfo(store_type=ModelListStoreType.PROVENANCE, recover_info=prov_recover_info,
+                                   derived_from_id=derived_from)
+        return model_info
+
+    def _get_base_model(self, model_id: str):
+        with tempfile.TemporaryDirectory() as tmp_path:
+            model_info = ModelListInfo.load(model_id, self._file_pers_service, self._dict_pers_service, tmp_path)
+            return model_info.derived_from
+
+    def recover_models(self, model_list_id: str, execute_checks: bool = True) -> RestoredModelListInfo:
+        if self._get_store_type(model_list_id).value < ModelListStoreType.PROVENANCE.value:
+            result = super().recover_models(model_list_id, execute_checks)
+        else:
+            base_models_id = self._get_base_model(model_list_id)
+            base_model_info = self.recover_models(base_models_id, execute_checks)
+            base_models = base_model_info.models
+
+            with tempfile.TemporaryDirectory() as tmp_path:
+                restore_dir = os.path.join(tmp_path, RESTORE_PATH)
+                os.mkdir(restore_dir)
+
+                model_info = ModelListInfo.load(model_list_id, self._file_pers_service, self._dict_pers_service,
+                                                restore_dir, load_recursive=True, load_files=True)
+
+                # from here on crash guaranteed because not adjusted
+                recover_info: ListProvenanceRecoverInfo = model_info.recover_info
+
+                # adjust the Train info to use the right dataset
+                for idx in range(len(recover_info.datasets)):
+                    # if 'SKIP' in path -> interpret as model was not updated -> skip training
+                    if not SKIP in recover_info.datasets[idx].data_path:
+                        # make sure directory is empty
+                        shutil.rmtree(restore_dir)
+                        os.mkdir(restore_dir)
+
+                        recover_info.adjust_for_dataset(self._dict_pers_service, self._file_pers_service, True, True,
+                                                        restore_dir, idx)
+
+                        train_service = recover_info.train_info.train_service_wrapper.instance
+                        train_kwargs = recover_info.train_info.train_kwargs
+                        train_service.train(base_models[idx], **train_kwargs)
+                        # after training the base models are the recovered models
+
+                result = RestoredModelListInfo(models=base_models)
+        return result
