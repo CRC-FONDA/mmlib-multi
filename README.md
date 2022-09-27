@@ -1,4 +1,4 @@
-# MMlib - socc
+# MMlib - multi
 
 - This is an extended version of the MMlib (Model Management library)
     - repo of plain MMlib -- [here](https://github.com/hpides/mmlib)
