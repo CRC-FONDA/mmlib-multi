@@ -1,7 +1,7 @@
 # M<sup>3</sup>lib - Multi Model Management Library
 
 - This is the code for our EDBT short paper:
-    - Reference will follow once oficially published
+    - Reference will follow once officially published
 - The code is an extended version of the MMlib (Model Management library)
     - you can find the repo of the plain MMlib -- [here](https://github.com/hpides/mmlib)
 
