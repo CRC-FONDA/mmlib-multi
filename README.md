@@ -1,4 +1,4 @@
-# M[^3]lib - Multi Model Management Library
+# M^3^lib - Multi Model Management Library
 
 - This is an extended version of the MMlib (Model Management library)
     - repo of plain MMlib -- [here](https://github.com/hpides/mmlib)
