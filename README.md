@@ -1,5 +1,5 @@
-<h1 align="center">Efficient Multi-Model Managemen</h1>
-<p align="center">This repository contains the code to our <a href="https://openproceedings.org/2022/conf/edbt/paper-60.pdf"> EDBT '23 short paper<a/>.<p/>
+<h1 align="center">Efficient Multi-Model Management</h1>
+<p align="center">This repository contains the code to our EDBT '23 short paper.<p/>
 
 # M<sup>3</sup>lib - Multi Model Management Library
 
