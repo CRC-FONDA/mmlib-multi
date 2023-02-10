@@ -1,9 +1,10 @@
-# M<sup>3</sup>lib - Multi Model Management Library
+<h1 align="center">Efficient Multi-Model Managemen -- M<sup>3</sup>lib - Multi Model Management Library</h1>
+<p align="center">This repository contains the code to our <a href="https://openproceedings.org/2022/conf/edbt/paper-60.pdf"> EDBT '23 short paper<a/>.<p/>
 
-- This is the code for our EDBT short paper:
-    - Reference will follow once officially published
+
 - The code is an extended version of the MMlib (Model Management library)
-    - you can find the repo of the plain MMlib -- [here](https://github.com/hpides/mmlib)
+    - [MMlib paper](https://openproceedings.org/2022/conf/edbt/paper-60.pdf)
+    - [MMlib repo](https://github.com/hpides/mmlib)
 
 ## Installation
 
