@@ -1,6 +1,7 @@
-<h1 align="center">Efficient Multi-Model Managemen -- M<sup>3</sup>lib - Multi Model Management Library</h1>
+<h1 align="center">Efficient Multi-Model Managemen</h1>
 <p align="center">This repository contains the code to our <a href="https://openproceedings.org/2022/conf/edbt/paper-60.pdf"> EDBT '23 short paper<a/>.<p/>
 
+# M<sup>3</sup>lib - Multi Model Management Library
 
 - The code is an extended version of the MMlib (Model Management library)
     - [MMlib paper](https://openproceedings.org/2022/conf/edbt/paper-60.pdf)
