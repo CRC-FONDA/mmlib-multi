@@ -30,3 +30,18 @@
         - afterward it builds the library, and a `dist` directory containing the `.whl` file is created
 - **Install**
     - to install mmlib run: `pip install <PATH>/dist/mmlib-0.0.1-py3-none-any.whl`
+
+## Cite Our Work
+If you use our code or insights from the paper, please cite us.
+
+```bibtex
+@inproceedings{strassenburg_2023_m3lib,
+  author    = {Nils Strassenburg and Dominic Kupfer and Julia Kowal and Tilmann Rabl},
+  title     = {Efficient Multi-Model Management},
+  booktitle = {Proceedings 26th International Conference on Extending Database Technology (EDBT 2023) Ioannina, Greece, March 28 - March 31},
+  pages     = {457–-463},
+  publisher = {OpenProceedings.org},
+  year      = {2023},
+  doi       = {10.48786/edbt.2023.37}
+}
+```
